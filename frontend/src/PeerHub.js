@@ -21,7 +21,7 @@ function PeerHub() {
   const [messages, setMessages] = useState([
     // General channel messages
     { channelId: 1, user: "Aastha", text: "Hey everyone! How’s your day going?" },
-    { channelId: 1, user: "You", text: "Hi Alice! I'm feeling a bit stressed today." },
+    { channelId: 1, user: "You", text: "Hi Aastha! I'm feeling a bit stressed today." },
     { channelId: 1, user: "Kirti", text: "Same here, had a tough morning 😅" },
     { channelId: 1, user: "Shreya", text: "Anyone tried meditation today? It helps me calm down." },
     { channelId: 1, user: "You", text: "Not yet, might give it a try. Thanks for the tip!" },
