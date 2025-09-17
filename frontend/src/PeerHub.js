@@ -9,9 +9,9 @@ function PeerHub() {
   ]);
 
   const [users] = useState([
-    { id: 1, name: "Alice", online: true },
-    { id: 2, name: "Bob", online: true },
-    { id: 3, name: "Charlie", online: false },
+    { id: 1, name: "Aastha", online: true },
+    { id: 2, name: "Kirti", online: true },
+    { id: 3, name: "Shreya", online: false },
     { id: 4, name: "You", online: true },
   ]);
 
@@ -20,22 +20,22 @@ function PeerHub() {
   const [dmUser, setDmUser] = useState(null);
   const [messages, setMessages] = useState([
     // General channel messages
-    { channelId: 1, user: "Alice", text: "Hey everyone! How’s your day going?" },
+    { channelId: 1, user: "Aastha", text: "Hey everyone! How’s your day going?" },
     { channelId: 1, user: "You", text: "Hi Alice! I'm feeling a bit stressed today." },
-    { channelId: 1, user: "Bob", text: "Same here, had a tough morning 😅" },
-    { channelId: 1, user: "Charlie", text: "Anyone tried meditation today? It helps me calm down." },
+    { channelId: 1, user: "Kirti", text: "Same here, had a tough morning 😅" },
+    { channelId: 1, user: "Shreya", text: "Anyone tried meditation today? It helps me calm down." },
     { channelId: 1, user: "You", text: "Not yet, might give it a try. Thanks for the tip!" },
 
     // Support channel messages
     { channelId: 2, user: "SereneBot", text: "Remember to take deep breaths and stay hydrated 💧" },
-    { channelId: 2, user: "Alice", text: "Feeling anxious before exams, any advice?" },
+    { channelId: 2, user: "Aastha", text: "Feeling anxious before exams, any advice?" },
     { channelId: 2, user: "You", text: "Try breaking your tasks into small steps. It helps!" },
-    { channelId: 2, user: "Bob", text: "I’m here if anyone needs someone to talk to." },
+    { channelId: 2, user: "Kirti", text: "I’m here if anyone needs someone to talk to." },
 
     // Random channel messages
-    { channelId: 3, user: "Charlie", text: "Check out this relaxing playlist I found 🎵" },
+    { channelId: 3, user: "Shreya", text: "Check out this relaxing playlist I found 🎵" },
     { channelId: 3, user: "You", text: "Just made a cup of herbal tea, so cozy!" },
-    { channelId: 3, user: "Alice", text: "Haha I’m watching cute animal videos 🐶" },
+    { channelId: 3, user: "Aastha", text: "Haha I’m watching cute animal videos 🐶" },
   ]);
 
   const [input, setInput] = useState("");
