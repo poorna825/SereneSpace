@@ -19,7 +19,7 @@ function Chatbot() {
     setMessages(prev => [...prev, userMessage]);
 
     try {
-      const res = await fetch("http://localhost:5000/chatbot", {
+      const res = await fetch("https://serenespace-9xqw.onrender.com/chatbot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: input })
