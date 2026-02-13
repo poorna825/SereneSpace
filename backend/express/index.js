@@ -76,6 +76,61 @@ app.get('/api/profile', async (req, res) => {
   }
 });
 
+
+// JWT authentication middleware
+function authenticateJWT(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid token' });
+  }
+  try {
+    const token = auth.split(' ')[1];
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+// User CRUD endpoints (protected)
+app.get('/api/users', authenticateJWT, async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({ select: { id: true, email: true, role: true, createdAt: true } });
+    res.json({ users });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch users', details: err.message });
+  }
+});
+
+app.get('/api/users/:id', authenticateJWT, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: Number(req.params.id) }, select: { id: true, email: true, role: true, createdAt: true } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user', details: err.message });
+  }
+});
+
+app.put('/api/users/:id', authenticateJWT, async (req, res) => {
+  try {
+    const { email, role } = req.body;
+    const user = await prisma.user.update({ where: { id: Number(req.params.id) }, data: { email, role } });
+    res.json({ user: { id: user.id, email: user.email, role: user.role } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update user', details: err.message });
+  }
+});
+
+app.delete('/api/users/:id', authenticateJWT, async (req, res) => {
+  try {
+    await prisma.user.delete({ where: { id: Number(req.params.id) } });
+    res.json({ message: 'User deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete user', details: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Express backend listening on port ${PORT}`);
