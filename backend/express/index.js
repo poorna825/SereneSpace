@@ -4,15 +4,18 @@ import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import fetch from 'node-fetch';
+import Sentiment from 'sentiment';
 
 const app = express();
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
+const sentiment = new Sentiment();
 
 // Crisis keywords for detection
 const CRISIS_KEYWORDS = [
-  'suicide', 'self-harm', 'kill myself', 'end my life', 'hurt myself',
-  'overdose', 'cutting', 'depressed', 'hopeless', 'can\'t go on', 'give up'
+  'suicide', 'suicidal', 'self-harm', 'self harm', 'kill myself', 'end my life', 'hurt myself',
+  'overdose', 'cutting', 'want to die', 'better off dead', 'no reason to live',
+  'can\'t go on', 'give up on life', 'end it all', 'harm myself'
 ];
 
 // HuggingFace Inference API config
@@ -111,52 +114,176 @@ function requireRole(...roles) {
   };
 }
 
+// Optional JWT authentication middleware (for routes that support anonymous access)
+function optionalAuthenticateJWT(req, res, next) {
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    try {
+      const token = auth.split(' ')[1];
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      // If token is invalid, continue as anonymous
+      req.user = null;
+    }
+  } else {
+    req.user = null;
+  }
+  next();
+}
+
 // Chatbot API route
-app.post('/api/chatbot', authenticateJWT, async (req, res) => {
+app.post('/api/chatbot', optionalAuthenticateJWT, async (req, res) => {
   const { message, anonymous, sessionId } = req.body;
   if (!message) return res.status(400).json({ error: 'Message required' });
+
+  // Determine if user is authenticated
+  const isAuthenticated = req.user && req.user.userId;
+  const isAnonymous = anonymous || !isAuthenticated;
+
+  // Analyze sentiment
+  const sentimentAnalysis = sentiment.analyze(message);
+  const sentimentScore = sentimentAnalysis.score; // Positive = positive sentiment, Negative = negative sentiment
 
   // Detect crisis keywords
   const crisis = CRISIS_KEYWORDS.some(kw => message.toLowerCase().includes(kw));
 
-  // Call HuggingFace Inference API
-  let botReply = '';
-  try {
-    const hfRes = await fetch(HF_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${HF_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ inputs: message })
-    });
-    const hfData = await hfRes.json();
-    botReply = Array.isArray(hfData) && hfData[0]?.generated_text ? hfData[0].generated_text : (hfData.generated_text || '');
-  } catch (err) {
-    botReply = 'Sorry, I am having trouble responding right now.';
+  // Generate bot reply with expanded patterns and sentiment awareness
+  let botReply = 'I understand. Can you tell me more about what you\'re feeling?';
+  
+  const lowerMessage = message.toLowerCase();
+  
+  // CRISIS DETECTION (highest priority)
+  if (crisis) {
+    botReply = 'I\'m very concerned about what you\'re sharing. Please know that help is available right now. Would you like me to provide emergency resources? You can call 988 (Suicide Prevention Lifeline) or text HOME to 741741 (Crisis Text Line).';
+  }
+  // DEPRESSION & HOPELESSNESS
+  else if (lowerMessage.includes('depressed') || lowerMessage.includes('depression')) {
+    botReply = 'I hear that you\'re feeling depressed. Depression is a real medical condition, and you don\'t have to face it alone. Have you considered talking to a mental health professional? I\'m here to listen.';
+  }
+  else if (lowerMessage.includes('hopeless') || lowerMessage.includes('no hope') || lowerMessage.includes('pointless')) {
+    botReply = 'Feeling hopeless can be overwhelming, but please know that these feelings can change. You matter, and your life has value. Would it help to talk about what\'s making you feel this way?';
+  }
+  else if (lowerMessage.includes('lonely') || lowerMessage.includes('alone') || lowerMessage.includes('isolated')) {
+    botReply = 'Loneliness can be really difficult. I\'m here with you right now. Have you thought about reaching out to friends, family, or joining support groups? Sometimes connecting with others can help.';
+  }
+  // ANXIETY & PANIC
+  else if (lowerMessage.includes('anxious') || lowerMessage.includes('anxiety')) {
+    botReply = 'Anxiety can be overwhelming. Have you tried any breathing exercises or mindfulness techniques? I can guide you through some grounding exercises if you\'d like. What triggers your anxiety?';
+  }
+  else if (lowerMessage.includes('panic') || lowerMessage.includes('panic attack')) {
+    botReply = 'Panic attacks can be frightening. Try the 5-4-3-2-1 technique: Name 5 things you see, 4 you can touch, 3 you hear, 2 you smell, and 1 you taste. Focus on your breathing. I\'m here with you.';
+  }
+  else if (lowerMessage.includes('worried') || lowerMessage.includes('worry')) {
+    botReply = 'It sounds like you\'re carrying a lot of worry. Sometimes it helps to write down your concerns or talk them through. What\'s weighing on your mind the most right now?';
+  }
+  // STRESS & OVERWHELM
+  else if (lowerMessage.includes('stressed') || lowerMessage.includes('stress')) {
+    botReply = 'Stress is a common challenge. What are the main sources of stress in your life right now? Sometimes breaking things down into smaller, manageable steps can help reduce overwhelm.';
+  }
+  else if (lowerMessage.includes('overwhelmed') || lowerMessage.includes('too much') || lowerMessage.includes('can\'t handle')) {
+    botReply = 'Feeling overwhelmed is a sign you might be taking on too much. It\'s okay to ask for help or take a break. What\'s the most urgent thing you\'re dealing with right now?';
+  }
+  // SLEEP & FATIGUE
+  else if (lowerMessage.includes('sleep') || lowerMessage.includes('insomnia') || lowerMessage.includes('can\'t sleep')) {
+    botReply = 'Sleep is so important for mental health. Are you experiencing difficulty falling asleep or staying asleep? Creating a bedtime routine and limiting screens before bed can help. How long has this been going on?';
+  }
+  else if (lowerMessage.includes('tired') || lowerMessage.includes('exhausted') || lowerMessage.includes('fatigue')) {
+    botReply = 'Feeling exhausted can affect everything. Are you getting enough rest? Sometimes persistent fatigue can be a sign of burnout or depression. How are you taking care of yourself?';
+  }
+  // ANGER & FRUSTRATION
+  else if (lowerMessage.includes('angry') || lowerMessage.includes('anger') || lowerMessage.includes('furious')) {
+    botReply = 'Anger is a valid emotion. It often points to something that matters to you. What\'s behind your anger? Sometimes talking about it can help you process these feelings.';
+  }
+  else if (lowerMessage.includes('frustrated') || lowerMessage.includes('frustration')) {
+    botReply = 'Frustration can build up when things aren\'t going as planned. What\'s frustrating you right now? Let\'s talk through it together.';
+  }
+  // GRIEF & LOSS
+  else if (lowerMessage.includes('grief') || lowerMessage.includes('grieving') || lowerMessage.includes('loss')) {
+    botReply = 'I\'m sorry for your loss. Grief is a natural process, and everyone experiences it differently. There\'s no "right" way to grieve. Would you like to share what you\'re going through?';
+  }
+  else if (lowerMessage.includes('miss') || lowerMessage.includes('died') || lowerMessage.includes('passed away')) {
+    botReply = 'Losing someone is incredibly painful. Please know that it\'s okay to feel sad, angry, or confused. Grief takes time. I\'m here to listen if you want to talk about it.';
+  }
+  // RELATIONSHIPS
+  else if (lowerMessage.includes('breakup') || lowerMessage.includes('broke up') || lowerMessage.includes('relationship ended')) {
+    botReply = 'Breakups are really tough. It\'s normal to feel a range of emotions right now. Give yourself time to heal. What has been the hardest part for you?';
+  }
+  else if (lowerMessage.includes('fight') || lowerMessage.includes('argument') || lowerMessage.includes('conflict')) {
+    botReply = 'Conflicts in relationships can be stressful. Communication and understanding each other\'s perspectives can help. Do you want to talk about what happened?';
+  }
+  // SELF-ESTEEM & CONFIDENCE
+  else if (lowerMessage.includes('worthless') || lowerMessage.includes('not good enough') || lowerMessage.includes('hate myself')) {
+    botReply = 'Those thoughts must be very painful. Please know that you have inherent worth, regardless of what you\'re going through. These negative thoughts don\'t reflect who you really are. Have you talked to anyone about how you\'re feeling?';
+  }
+  else if (lowerMessage.includes('confidence') || lowerMessage.includes('insecure') || lowerMessage.includes('self-esteem')) {
+    botReply = 'Self-esteem challenges are common, but you can build confidence over time. Start by noticing your strengths and celebrating small wins. What\'s one thing you\'re proud of?';
+  }
+  // COPING & HELP-SEEKING
+  else if (lowerMessage.includes('therapy') || lowerMessage.includes('therapist') || lowerMessage.includes('counselor')) {
+    botReply = 'Seeking therapy is a brave and positive step. A therapist can provide personalized support and coping strategies. Would you like help finding mental health resources?';
+  }
+  else if (lowerMessage.includes('medication') || lowerMessage.includes('meds')) {
+    botReply = 'Medication can be an important part of treatment for some people. If you\'re considering medication, it\'s best to discuss it with a healthcare provider who can assess your needs.';
+  }
+  else if (lowerMessage.includes('coping') || lowerMessage.includes('cope') || lowerMessage.includes('deal with')) {
+    botReply = 'Finding healthy coping strategies is important. Some options include exercise, journaling, meditation, talking to friends, or creative activities. What has helped you in the past?';
+  }
+  // POSITIVE EMOTIONS (with sentiment boost)
+  else if (lowerMessage.includes('happy') || lowerMessage.includes('good') || lowerMessage.includes('better') || lowerMessage.includes('great')) {
+    if (sentimentScore > 2) {
+      botReply = 'That\'s wonderful to hear! I\'m so glad you\'re feeling positive. It\'s important to celebrate these moments. What has been helping you feel this way?';
+    } else {
+      botReply = 'I\'m glad things are looking up! What positive changes have you noticed?';
+    }
+  }
+  else if (lowerMessage.includes('excited') || lowerMessage.includes('looking forward')) {
+    botReply = 'That\'s fantastic! Having something to look forward to can be really uplifting. What are you excited about?';
+  }
+  // GREETINGS
+  else if (lowerMessage.includes('hello') || lowerMessage.includes('hi ') || lowerMessage.includes('hey')) {
+    botReply = 'Hello! I\'m SereneBot, here to listen and support you. How are you feeling today?';
+  }
+  // GRATITUDE
+  else if (lowerMessage.includes('thank') || lowerMessage.includes('thanks')) {
+    botReply = 'You\'re very welcome! I\'m here anytime you need to talk. How else can I support you today?';
+  }
+  // GOODBYE
+  else if (lowerMessage.includes('bye') || lowerMessage.includes('goodbye') || lowerMessage.includes('see you')) {
+    botReply = 'Take care of yourself! Remember, I\'m here whenever you need to talk. You don\'t have to face things alone. Goodbye for now!';
+  }
+  // SENTIMENT-BASED FALLBACK
+  else if (sentimentScore < -2) {
+    // Very negative sentiment
+    botReply = 'I can sense you\'re going through a difficult time. Your feelings are valid, and I\'m here to listen. Would you like to tell me more about what\'s bothering you?';
+  }
+  else if (sentimentScore > 2) {
+    // Very positive sentiment
+    botReply = 'It sounds like you\'re in a good place! That\'s great to hear. What\'s been going well for you?';
   }
 
   // Store chat history in DB
   let chatSession;
   try {
     if (sessionId) {
-      chatSession = await prisma.chatSession.findUnique({ where: { id: sessionId } });
+      chatSession = await prisma.chatSession.findUnique({ where: { id: Number(sessionId) } });
     }
     if (!chatSession) {
       chatSession = await prisma.chatSession.create({
         data: {
-          userId: anonymous ? null : req.user.userId,
+          userId: isAnonymous ? null : req.user.userId,
         },
       });
     }
+    
     // Store user message
     await prisma.message.create({
       data: {
         chatSessionId: chatSession.id,
-        sender: anonymous ? 'anonymous' : req.user.email,
+        sender: isAnonymous ? 'anonymous' : req.user.email,
         content: message,
       },
     });
+    
     // Store bot reply
     await prisma.message.create({
       data: {
@@ -170,7 +297,7 @@ app.post('/api/chatbot', authenticateJWT, async (req, res) => {
     console.error('Failed to store chat history:', err.message);
   }
 
-  res.json({ reply: botReply, crisis, sessionId: chatSession?.id });
+  res.json({ reply: botReply, sessionId: chatSession?.id, sentiment: sentimentScore });
 });
 
 // User CRUD endpoints (protected)
