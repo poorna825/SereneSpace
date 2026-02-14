@@ -1,10 +1,12 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import 'bootstrap/dist/css/bootstrap.min.css';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import Chatbot from "./Chatbot";  
 import Resources from "./Resources";
 import PeerHub from "./PeerHub";
 import EmergencySupport from './EmergencySupport';
+import Login from './Login';
+import Register from './Register';
 import { FaUserFriends, FaBookOpen, FaRobot } from "react-icons/fa";
 
 const features = [
@@ -68,6 +70,39 @@ function Home() {
 }
 
 function App() {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    // Check if user is logged in
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch('http://localhost:4000/api/profile', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.user) setUser(data.user);
+        })
+        .catch(err => console.error('Error fetching profile:', err));
+    }
+  }, []);
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+    window.location.href = '/';
+  };
+
+  const handleRegister = (userData) => {
+    alert('Registration successful! Please login.');
+    window.location.href = '/login';
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setUser(null);
+    window.location.href = '/';
+  };
+
   return (
     <Router>
       <div>
@@ -92,6 +127,22 @@ function App() {
                 <li className="nav-item"><Link className="nav-link" to="/resources">Resources</Link></li>
                 <li className="nav-item"><Link className="nav-link" to="/peerhub">Peer Hub</Link></li>
                 <li className="nav-item"><Link className="nav-link" to="/chat">Chatbot</Link></li>
+                {!user && (
+                  <>
+                    <li className="nav-item"><Link className="nav-link" to="/login">Login</Link></li>
+                    <li className="nav-item"><Link className="nav-link" to="/register">Register</Link></li>
+                  </>
+                )}
+                {user && (
+                  <>
+                    <li className="nav-item">
+                      <span className="nav-link text-info">{user.email} ({user.role})</span>
+                    </li>
+                    <li className="nav-item">
+                      <button className="nav-link btn btn-link" onClick={handleLogout}>Logout</button>
+                    </li>
+                  </>
+                )}
               </ul>
             </div>
           </div>
@@ -103,6 +154,8 @@ function App() {
           <Route path="/resources" element={<Resources />} />
           <Route path="/peerhub" element={<PeerHub />} />
           <Route path="/chat" element={<Chatbot />} />
+          <Route path="/login" element={<Login onLogin={handleLogin} />} />
+          <Route path="/register" element={<Register onRegister={handleRegister} />} />
         </Routes>
 
         {/* Footer */}

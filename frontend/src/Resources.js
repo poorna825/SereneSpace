@@ -1,12 +1,58 @@
-import React from 'react';
-
+import React, { useState, useEffect } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 function Resources() {
+  const [resources, setResources] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch resources from backend
+    fetch('http://localhost:4000/api/resources')
+      .then(res => res.json())
+      .then(data => {
+        setResources(data.resources || []);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Error fetching resources:', err);
+        setLoading(false);
+      });
+  }, []);
+
   return (
     <div className="container py-5">
       <h2 className="text-center text-primary mb-4">Mental Health Resources</h2>
 
+      {loading && <p className="text-center">Loading resources...</p>}
+
+      {/* Dynamic Resources from Database */}
+      {!loading && resources.length > 0 && (
+        <div className="mb-5">
+          <h4 className="mb-3">Recommended Resources</h4>
+          <div className="row">
+            {resources.map(resource => (
+              <div key={resource.id} className="col-md-4 mb-3">
+                <div className="card h-100 shadow">
+                  <div className="card-body">
+                    <h5 className="card-title">{resource.title}</h5>
+                    <a 
+                      href={resource.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="btn btn-primary"
+                    >
+                      Visit Resource
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Default Embedded Resources */}
+      <h4 className="mb-3">Multimedia Resources</h4>
       <div className="row">
         {/* Resource 1: Meditation Video */}
         <div className="col-md-4 mb-3">
