@@ -52,6 +52,7 @@ model Appointment {
   counselor    User?   @relation("CounselorAppointments", fields: [counselorId], references: [id])
   counselorId  Int?
   scheduledAt  DateTime
+  status       String   @default("pending")
   createdAt    DateTime @default(now())
 }
 
@@ -61,6 +62,8 @@ model Post {
   userId    Int?
   title     String
   content   String
+  likes     Int      @default(0)
+  flagged   Boolean  @default(false)
   createdAt DateTime @default(now())
   comments  Comment[]
 }
@@ -72,6 +75,8 @@ model Comment {
   user      User?    @relation(fields: [userId], references: [id])
   userId    Int?
   content   String
+  likes     Int      @default(0)
+  flagged   Boolean  @default(false)
   createdAt DateTime @default(now())
 }
 
