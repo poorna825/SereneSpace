@@ -19,11 +19,34 @@ function Chatbot() {
   // Crisis keywords to check in bot responses
   const crisisKeywords = ['emergency', 'hotline', 'help immediately', 'crisis', 'suicide', 'self-harm'];
 
+  // Emotion emoji mapping
+  const emotionEmojis = {
+    anger: '😠',
+    disgust: '😖',
+    fear: '😰',
+    joy: '😊',
+    sadness: '😢',
+    surprise: '😲',
+    neutral: '😐'
+  };
+
+  // Emotion colors
+  const emotionColors = {
+    anger: '#dc3545',
+    disgust: '#6c757d',
+    fear: '#ffc107',
+    joy: '#28a745',
+    sadness: '#17a2b8',
+    surprise: '#fd7e14',
+    neutral: '#6c757d'
+  };
+
   const handleSend = async () => {
     if (input.trim() === "") return;
 
     const userMessage = { sender: "user", text: input };
     setMessages(prev => [...prev, userMessage]);
+    const userInput = input;
     setInput("");
     setError(null);
 
@@ -42,12 +65,12 @@ function Chatbot() {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      const res = await fetch("http://localhost:4000/api/chatbot", {
+      // Use the new emotion-aware endpoint
+      const res = await fetch("http://localhost:4000/api/chatbot/emotion", {
         method: "POST",
         headers: headers,
         body: JSON.stringify({ 
-          message: input,
-          anonymous: anonymous,
+          message: userInput,
           sessionId: sessionId
         })
       });
@@ -55,7 +78,12 @@ function Chatbot() {
       const data = await res.json();
       
       if (res.ok) {
-        const botMessage = { sender: "bot", text: data.reply || "I'm here to help." };
+        const botMessage = { 
+          sender: "bot", 
+          text: data.reply || "I'm here to help.",
+          emotion: data.emotion,
+          timestamp: data.timestamp
+        };
         setMessages(prev => [...prev, botMessage]);
         
         // Update session ID
@@ -105,7 +133,12 @@ function Chatbot() {
 
   return (
     <div className="container py-5">
-      <h2 className="text-center text-primary mb-4">Chat with SereneBot</h2>
+      <h2 className="text-center text-primary mb-4">
+        Chat with SereneBot 🤖
+        <small className="d-block text-muted fs-6 mt-2">
+          AI-powered emotional support with real-time emotion detection
+        </small>
+      </h2>
 
       {crisisDetected && (
         <div className="alert alert-danger alert-dismissible fade show" role="alert">
@@ -139,7 +172,9 @@ function Chatbot() {
 
       <div className="card shadow">
         <div className="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-          <span>Chat Session {sessionId ? `#${sessionId}` : '(New)'}</span>
+          <span>
+            💬 Session {sessionId ? `#${sessionId}` : '(New)'}
+          </span>
           <div className="form-check form-switch">
             <input 
               className="form-check-input" 
@@ -153,44 +188,105 @@ function Chatbot() {
             </label>
           </div>
         </div>
-        <div className="card-body" style={{ height: "400px", overflowY: "auto" }}>
+        <div className="card-body" style={{ height: "500px", overflowY: "auto", backgroundColor: "#f8f9fa" }}>
           {messages.map((msg, index) => (
-            <div key={index} className={`mb-2 text-${msg.sender === "user" ? "end" : "start"}`}>
-              <span className={`badge bg-${msg.sender === "user" ? "success" : "secondary"} p-2`} style={{ maxWidth: "80%", whiteSpace: "pre-wrap" }}>
-                {msg.text}
-              </span>
+            <div key={index} className={`mb-3 text-${msg.sender === "user" ? "end" : "start"}`}>
+              <div style={{ display: 'inline-block', maxWidth: '80%' }}>
+                <span 
+                  className={`badge p-3 shadow-sm`} 
+                  style={{ 
+                    backgroundColor: msg.sender === "user" ? "#0d6efd" : "#6c757d",
+                    whiteSpace: "pre-wrap",
+                    borderRadius: "12px",
+                    fontSize: "0.95rem",
+                    textAlign: "left"
+                  }}
+                >
+                  {msg.text}
+                </span>
+                {msg.emotion && (
+                  <div className="mt-1 small">
+                    <span 
+                      className="badge"
+                      style={{ 
+                        backgroundColor: emotionColors[msg.emotion] || '#6c757d',
+                        fontSize: "0.7rem"
+                      }}
+                    >
+                      {emotionEmojis[msg.emotion]} {msg.emotion}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
           {isTyping && (
             <div className="mb-2 text-start">
-              <span className="badge bg-secondary p-2">
+              <span className="badge bg-secondary p-2 shadow-sm" style={{ borderRadius: "12px" }}>
                 <span className="spinner-border spinner-border-sm me-2" role="status">
                   <span className="visually-hidden">Loading...</span>
                 </span>
-                Bot is typing...
+                SereneBot is analyzing your message...
               </span>
             </div>
           )}
           <div ref={chatEndRef} /> {/* Scroll target */}
         </div>
 
-        <div className="card-footer d-flex">
-          <input
-            type="text"
-            className="form-control me-2"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Type your message..."
-            disabled={isTyping}
-          />
-          <button 
-            className="btn btn-primary" 
-            onClick={handleSend}
-            disabled={isTyping || input.trim() === ""}
-          >
-            Send
-          </button>
+        <div className="card-footer bg-white">
+          <div className="d-flex">
+            <input
+              type="text"
+              className="form-control me-2"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Share your thoughts or feelings..."
+              disabled={isTyping}
+              style={{ borderRadius: "20px" }}
+            />
+            <button 
+              className="btn btn-primary px-4" 
+              onClick={handleSend}
+              disabled={isTyping || input.trim() === ""}
+              style={{ borderRadius: "20px" }}
+            >
+              {isTyping ? (
+                <span className="spinner-border spinner-border-sm" role="status"></span>
+              ) : (
+                "Send"
+              )}
+            </button>
+          </div>
+          <div className="text-center mt-2">
+            <small className="text-muted">
+              🔒 Your conversations are private and secure
+            </small>
+          </div>
+        </div>
+      </div>
+
+      {/* Emotion Legend */}
+      <div className="card mt-3 shadow-sm">
+        <div className="card-body">
+          <h6 className="card-title mb-3">Emotion Detection Guide</h6>
+          <div className="d-flex flex-wrap gap-2">
+            {Object.entries(emotionEmojis).map(([emotion, emoji]) => (
+              <span 
+                key={emotion}
+                className="badge"
+                style={{ 
+                  backgroundColor: emotionColors[emotion],
+                  fontSize: "0.85rem"
+                }}
+              >
+                {emoji} {emotion.charAt(0).toUpperCase() + emotion.slice(1)}
+              </span>
+            ))}
+          </div>
+          <p className="mb-0 mt-2 small text-muted">
+            SereneBot uses AI to detect emotions in your messages and provide empathetic, personalized support.
+          </p>
         </div>
       </div>
     </div>

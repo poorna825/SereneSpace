@@ -5,11 +5,30 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import fetch from 'node-fetch';
 import Sentiment from 'sentiment';
+import { HfInference } from '@huggingface/inference';
 
 const app = express();
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 const sentiment = new Sentiment();
+
+// Initialize HuggingFace Inference API
+const HF_API_KEY = process.env.HF_API_KEY || 'your_huggingface_api_key';
+const hf = new HfInference(HF_API_KEY, {
+  baseUrl: 'https://router.huggingface.co',
+  defaultOptions: {
+    retry: { maxRetries: 2 },
+    timeout: 30000  // 30 seconds timeout
+  }
+});
+
+// AI Model Configuration
+// Try these models for text generation:
+// - 'google/flan-t5-base' (recommended: fast, instruction-following)
+// - 'microsoft/DialoGPT-medium' (conversational)
+// - 'meta-llama/Llama-2-7b-chat-hf' (powerful, needs Pro)
+// - 'HuggingFaceH4/zephyr-7b-beta' (empathetic, needs Pro)
+const TEXT_GENERATION_MODEL = process.env.TEXT_GEN_MODEL || 'google/flan-t5-base';
 
 // Crisis keywords for detection
 const CRISIS_KEYWORDS = [
@@ -17,10 +36,6 @@ const CRISIS_KEYWORDS = [
   'overdose', 'cutting', 'want to die', 'better off dead', 'no reason to live',
   'can\'t go on', 'give up on life', 'end it all', 'harm myself'
 ];
-
-// HuggingFace Inference API config
-const HF_API_URL = 'https://api-inference.huggingface.co/models/gpt2';
-const HF_API_KEY = process.env.HF_API_KEY || 'your_huggingface_api_key';
 
 app.use(cors());
 app.use(express.json());
@@ -299,6 +314,274 @@ app.post('/api/chatbot', optionalAuthenticateJWT, async (req, res) => {
 
   res.json({ reply: botReply, sessionId: chatSession?.id, sentiment: sentimentScore });
 });
+
+// Advanced Chatbot API with Emotion Analysis and Text Generation
+app.post('/api/chatbot/emotion', optionalAuthenticateJWT, async (req, res) => {
+  const { message, sessionId } = req.body;
+  
+  if (!message) {
+    return res.status(400).json({ error: 'Message required' });
+  }
+
+  // Determine if user is authenticated
+  const isAuthenticated = req.user && req.user.userId;
+  const isAnonymous = !isAuthenticated;
+  
+  let chatSession = null;
+  let detectedEmotion = 'neutral';
+  let botReply = 'I understand. Can you tell me more about what you\'re feeling?';
+  
+  try {
+    // Step 1: Run sentiment/emotion analysis using HuggingFace
+    try {
+      console.log('🔍 Attempting HuggingFace emotion analysis...');
+      
+      const emotionResult = await hf.textClassification({
+        model: 'j-hartmann/emotion-english-distilroberta-base',
+        inputs: message,
+        options: {
+          wait_for_model: true,  // Wait for model to load if needed
+          use_cache: true
+        }
+      });
+      
+      // Get the top emotion
+      if (emotionResult && emotionResult.length > 0) {
+        detectedEmotion = emotionResult[0].label.toLowerCase();
+        console.log(`✅ HuggingFace detected emotion: ${detectedEmotion}`);
+      }
+    } catch (emotionError) {
+      console.error('❌ Emotion analysis failed:', emotionError.message);
+      console.log('🔄 Falling back to keyword detection...');
+      
+      // Enhanced fallback: Keyword-based emotion detection
+      const lowerMessage = message.toLowerCase();
+      
+      // Emotion keywords
+      const emotionKeywords = {
+        sadness: ['sad', 'depressed', 'down', 'hopeless', 'unhappy', 'miserable', 'crying', 'tears', 'grief', 'lonely', 'empty', 'worthless'],
+        fear: ['anxious', 'anxiety', 'worried', 'scared', 'afraid', 'panic', 'nervous', 'stress', 'overwhelmed', 'terrified', 'frightened'],
+        anger: ['angry', 'mad', 'furious', 'frustrated', 'annoyed', 'irritated', 'rage', 'hate', 'betrayed'],
+        joy: ['happy', 'excited', 'great', 'wonderful', 'amazing', 'thrilled', 'glad', 'delighted', 'love', 'blessed', 'grateful'],
+        disgust: ['disgusted', 'gross', 'awful', 'terrible', 'horrible', 'sick'],
+        surprise: ['shocked', 'surprised', 'unexpected', 'sudden', 'wow', 'can\'t believe']
+      };
+      
+      // Count keyword matches for each emotion
+      let maxMatches = 0;
+      let detectedByKeyword = 'neutral';
+      
+      for (const [emotion, keywords] of Object.entries(emotionKeywords)) {
+        const matches = keywords.filter(keyword => lowerMessage.includes(keyword)).length;
+        if (matches > maxMatches) {
+          maxMatches = matches;
+          detectedByKeyword = emotion;
+        }
+      }
+      
+      // If keywords detected emotion, use it; otherwise use sentiment
+      if (maxMatches > 0) {
+        detectedEmotion = detectedByKeyword;
+        console.log(`🔑 Keyword detection: ${detectedEmotion} (${maxMatches} matches)`);
+      } else {
+        // Fallback to basic sentiment
+        const sentimentAnalysis = sentiment.analyze(message);
+        if (sentimentAnalysis.score < -2) detectedEmotion = 'sadness';
+        else if (sentimentAnalysis.score > 2) detectedEmotion = 'joy';
+        else detectedEmotion = 'neutral';
+        console.log(`📊 Sentiment analysis: ${detectedEmotion} (score: ${sentimentAnalysis.score})`);
+      }
+    }
+    
+    // Step 2: Generate empathetic prompt based on detected emotion
+    const emotionPrompts = {
+      anger: "The user is expressing anger or frustration. Respond with validation, empathy, and help them process their feelings constructively.",
+      disgust: "The user is expressing disgust or displeasure. Respond with understanding and help them explore what's bothering them.",
+      fear: "The user is expressing fear or anxiety. Respond with reassurance, calmness, and practical coping strategies.",
+      joy: "The user is expressing happiness or joy. Respond with celebration and encouragement to savor positive moments.",
+      sadness: "The user is expressing sadness or grief. Respond with compassion, validation, and gentle support.",
+      surprise: "The user is expressing surprise. Respond with curiosity and help them process this unexpected experience.",
+      neutral: "The user is sharing something. Respond with empathy and understanding, encouraging them to share more."
+    };
+    
+    const emotionContext = emotionPrompts[detectedEmotion] || emotionPrompts.neutral;
+    
+    // Step 3: Generate empathetic response using text generation model
+    const generationPrompt = `You are an empathetic mental health support chatbot. The user is feeling ${detectedEmotion}.
+
+User: ${message}
+Therapist:`;
+
+    try {
+      // Try text generation with configured model
+      const generatedResponse = await hf.textGeneration({
+        model: TEXT_GENERATION_MODEL,
+        inputs: generationPrompt,
+        parameters: {
+          max_new_tokens: 80,
+          temperature: 0.8,
+          top_p: 0.95,
+          repetition_penalty: 1.2,
+          do_sample: true,
+          return_full_text: false
+        },
+        options: {
+          wait_for_model: false,
+          use_cache: false
+        }
+      });
+      
+      // Extract and clean the generated response
+      if (generatedResponse && generatedResponse.generated_text) {
+        let cleanResponse = generatedResponse.generated_text.trim();
+        
+        // Remove common artifacts
+        cleanResponse = cleanResponse.replace(/^(Therapist:|Response:|Assistant:)/i, '').trim();
+        cleanResponse = cleanResponse.replace(/User:/gi, '').trim();
+        
+        // Only use if it's a reasonable length and quality
+        if (cleanResponse.length > 20 && cleanResponse.length < 500) {
+          botReply = cleanResponse;
+          console.log('✅ AI-generated response used');
+        } else {
+          throw new Error('Response quality check failed');
+        }
+      } else {
+        throw new Error('No generated text returned');
+      }
+    } catch (genError) {
+      console.error('Text generation failed:', genError.message);
+      // Fallback to emotion-specific pre-written responses
+      botReply = generateEmotionResponse(detectedEmotion, message);
+    }
+    
+    // Step 4: Retrieve or create chat session
+    // First try to get existing session
+    if (sessionId) {
+      try {
+        chatSession = await prisma.chatSession.findUnique({ 
+          where: { id: Number(sessionId) } 
+        });
+      } catch (dbError) {
+        console.error('Failed to retrieve session:', dbError.message);
+      }
+    }
+    
+    // If no existing session, create new one
+    if (!chatSession) {
+      try {
+        chatSession = await prisma.chatSession.create({
+          data: {
+            userId: isAnonymous ? null : req.user.userId,
+          },
+        });
+      } catch (dbError) {
+        console.error('Failed to create session:', dbError.message);
+        // Continue without session - we'll return response without sessionId
+      }
+    }
+    
+    // Step 5: Store messages in database
+    if (chatSession) {
+      try {
+        // Store user message with detected emotion
+        await prisma.message.create({
+          data: {
+            chatSessionId: chatSession.id,
+            sender: isAnonymous ? 'anonymous' : req.user.email,
+            content: message,
+            emotion: detectedEmotion,
+          },
+        });
+        
+        // Store bot reply
+        await prisma.message.create({
+          data: {
+            chatSessionId: chatSession.id,
+            sender: 'bot',
+            content: botReply,
+            emotion: null,
+          },
+        });
+      } catch (dbError) {
+        console.error('Failed to store messages:', dbError.message);
+        // Continue - session is still valid even if messages weren't saved
+      }
+    }
+    
+    // Step 6: Return response
+    res.json({ 
+      reply: botReply, 
+      sessionId: chatSession?.id || sessionId, // Return existing sessionId if DB failed
+      emotion: detectedEmotion,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Chatbot error:', error.message);
+    
+    // Even on error, try to maintain session continuity
+    res.status(200).json({ 
+      reply: 'I apologize, I\'m having some technical difficulties, but I\'m still here to listen. Can you tell me more about what\'s on your mind?',
+      sessionId: sessionId || null,
+      emotion: detectedEmotion,
+      error: 'partial_failure',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Helper function to generate emotion-based fallback responses
+function generateEmotionResponse(emotion, userMessage) {
+  const lowerMessage = userMessage.toLowerCase();
+  
+  const responses = {
+    anger: [
+      "I can hear that you're feeling angry, and that's completely valid. Your feelings matter. Would you like to talk about what triggered this?",
+      "It sounds like something has really upset you. I'm here to listen without judgment. What happened that made you feel this way?",
+      "Anger often points to something important. Let's explore what's behind these feelings together."
+    ],
+    disgust: [
+      "I understand that something is bothering you deeply. Your reaction makes sense. Would you like to share more about what's troubling you?",
+      "It sounds like this situation is really difficult for you. I'm here to support you as you process these feelings."
+    ],
+    fear: [
+      "I hear that you're feeling anxious or afraid. It takes courage to share that. Let's work through this together.",
+      "Fear can be overwhelming, but you're not alone. Take a deep breath. What's worrying you most right now?",
+      "It's okay to feel scared. Your feelings are valid. Would you like to talk about what's causing this anxiety?"
+    ],
+    joy: [
+      "That's wonderful! I'm so glad to hear you're feeling positive. What's been bringing you joy?",
+      "It's great to celebrate these happy moments with you! Tell me more about what's going well.",
+      "Your happiness is contagious! I'd love to hear more about what's making you feel this way."
+    ],
+    sadness: [
+      "I'm so sorry you're going through this difficult time. Your feelings are completely valid, and I'm here with you.",
+      "Sadness can feel heavy. Please know that it's okay to feel this way, and you don't have to face it alone. I'm listening.",
+      "I hear your pain, and I want you to know that what you're feeling matters. Would you like to talk about it?"
+    ],
+    surprise: [
+      "That sounds like quite an unexpected turn! How are you processing this?",
+      "Surprises can be disorienting. Take your time to process what happened. I'm here to listen."
+    ],
+    neutral: [
+      "I'm listening. Tell me more about what's on your mind.",
+      "I'm here for you. What would you like to talk about?",
+      "Thank you for sharing. Can you tell me more about how you're feeling?"
+    ]
+  };
+  
+  const emotionResponses = responses[emotion] || responses.neutral;
+  
+  // Select response based on message content for better relevance
+  if (lowerMessage.includes('help') || lowerMessage.includes('what should i')) {
+    return emotionResponses[0];
+  } else if (lowerMessage.includes('why') || lowerMessage.includes('how')) {
+    return emotionResponses[emotionResponses.length > 1 ? 1 : 0];
+  } else {
+    return emotionResponses[Math.floor(Math.random() * emotionResponses.length)];
+  }
+}
 
 // User CRUD endpoints (protected)
 app.get('/api/users', authenticateJWT, async (req, res) => {

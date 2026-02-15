@@ -42,6 +42,7 @@ model Message {
   chatSessionId Int
   sender        String
   content       String
+  emotion       String?
   createdAt     DateTime    @default(now())
 }
 
