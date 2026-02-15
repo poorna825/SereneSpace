@@ -30,7 +30,7 @@ export default function Register({ onRegister }) {
   };
 
   return (
-    <div className="container py-5">
+    <div className="container py-5" style={{minHeight: "calc(100vh - 56px)"}}>
       <h2 className="mb-4">Register</h2>
       <form onSubmit={handleSubmit} style={{ maxWidth: 400 }}>
         <div className="mb-3">

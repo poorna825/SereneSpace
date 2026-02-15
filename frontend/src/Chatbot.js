@@ -258,11 +258,6 @@ function Chatbot() {
               )}
             </button>
           </div>
-          <div className="text-center mt-2">
-            <small className="text-muted">
-              🔒 Your conversations are private and secure
-            </small>
-          </div>
         </div>
       </div>
 
