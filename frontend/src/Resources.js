@@ -1,6 +1,107 @@
 import React, { useState, useEffect } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
+// Breathing Animation Component
+function BreathingGuide() {
+  const [isActive, setIsActive] = useState(false);
+  const [phase, setPhase] = useState('ready'); // ready, inhale, hold1, exhale, hold2
+  const [count, setCount] = useState(4);
+
+  useEffect(() => {
+    if (!isActive) return;
+
+    const phases = [
+      { name: 'inhale', duration: 4000, text: 'Breathe In' },
+      { name: 'hold1', duration: 4000, text: 'Hold' },
+      { name: 'exhale', duration: 4000, text: 'Breathe Out' },
+      { name: 'hold2', duration: 4000, text: 'Hold' }
+    ];
+
+    let currentPhaseIndex = 0;
+    let countInterval;
+    let phaseTimeout;
+
+    const runPhase = () => {
+      const currentPhase = phases[currentPhaseIndex];
+      setPhase(currentPhase.name);
+      setCount(4);
+
+      // Countdown
+      countInterval = setInterval(() => {
+        setCount(prev => {
+          if (prev <= 1) {
+            clearInterval(countInterval);
+            return 4;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      // Move to next phase
+      phaseTimeout = setTimeout(() => {
+        clearInterval(countInterval);
+        currentPhaseIndex = (currentPhaseIndex + 1) % phases.length;
+        runPhase();
+      }, currentPhase.duration);
+    };
+
+    runPhase();
+
+    return () => {
+      clearInterval(countInterval);
+      clearTimeout(phaseTimeout);
+    };
+  }, [isActive]);
+
+  const getPhaseText = () => {
+    switch(phase) {
+      case 'inhale': return 'Breathe In';
+      case 'hold1': return 'Hold';
+      case 'exhale': return 'Breathe Out';
+      case 'hold2': return 'Hold';
+      default: return 'Click Start';
+    }
+  };
+
+  const getCircleSize = () => {
+    if (phase === 'inhale') return '250px';
+    if (phase === 'exhale') return '100px';
+    return '175px';
+  };
+
+  return (
+    <div className="text-center py-4">
+      <div 
+        className="breathing-circle mx-auto mb-4 d-flex align-items-center justify-content-center flex-column shadow-lg"
+        style={{
+          width: getCircleSize(),
+          height: getCircleSize(),
+          borderRadius: '50%',
+          background: 'rgba(255, 255, 255, 0.9)',
+          transition: 'all 4s ease-in-out',
+          border: '5px solid white',
+          boxShadow: '0 0 40px rgba(255, 255, 255, 0.5)'
+        }}
+      >
+        <div className="fs-1 fw-bold text-primary mb-2" style={{fontSize: '3rem'}}>{isActive ? count : '4'}</div>
+        <div className="text-primary fw-bold fs-5">{getPhaseText()}</div>
+      </div>
+      <button 
+        className={`btn btn-lg ${isActive ? 'btn-light' : 'btn-outline-light'} px-5 shadow`}
+        onClick={() => setIsActive(!isActive)}
+        style={{fontSize: '1.2rem'}}
+      >
+        {isActive ? '⏸ Stop' : '▶ Start Breathing Exercise'}
+      </button>
+      {isActive && (
+        <div className="mt-3 text-white">
+          <small>Follow the circle: it grows as you inhale, stays steady as you hold, and shrinks as you exhale</small>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Resources() {
   const [resources, setResources] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -137,46 +238,114 @@ function Resources() {
       {/* Breathing Exercises Tab */}
       {(activeTab === 'all' || activeTab === 'breathing') && (
         <>
-          <h4 className="mb-4 fw-bold">💨 Breathing Techniques</h4>
+          <h4 className="mb-4 fw-bold">💨 Breathing Techniques for Stress Relief</h4>
+          
+          {/* Interactive Breathing Guide Card */}
+          <div className="row mb-4">
+            <div className="col-12">
+              <div className="card shadow-lg border-0" style={{background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", borderRadius: "20px"}}>
+                <div className="card-body p-5 text-white">
+                  <div className="text-center mb-4">
+                    <h3 className="fw-bold mb-2">🧘‍♀️ Box Breathing Exercise</h3>
+                    <p className="lead mb-0">Used by Navy SEALs, athletes, and mindfulness practitioners</p>
+                    <small className="d-block mt-2 opacity-75">A powerful technique to reduce stress and improve focus in just minutes</small>
+                  </div>
+                  
+                  {/* Interactive Breathing Guide */}
+                  <div className="my-5 py-4" style={{background: "rgba(255, 255, 255, 0.1)", borderRadius: "15px"}}>
+                    <BreathingGuide />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* How It Works - Step by Step */}
+          <div className="row mb-4">
+            <div className="col-12">
+              <div className="card shadow border-0" style={{borderRadius: "15px"}}>
+                <div className="card-body p-4">
+                  <h5 className="fw-bold mb-4 text-center text-primary">
+                    <span className="me-2">📋</span>How It Works - Follow These Steps
+                  </h5>
+                  <div className="row g-4">
+                    <div className="col-md-3 col-sm-6">
+                      <div className="text-center p-3 h-100" style={{background: "linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)", borderRadius: "12px"}}>
+                        <div className="bg-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-3 shadow" style={{width: '70px', height: '70px'}}>
+                          <span className="fs-1 fw-bold text-white">1</span>
+                        </div>
+                        <h6 className="fw-bold text-primary mb-2">Inhale</h6>
+                        <p className="mb-0 small text-dark">Breathe in slowly through your nose for 4 seconds</p>
+                        <div className="mt-2 text-primary">↑ 4s</div>
+                      </div>
+                    </div>
+                    <div className="col-md-3 col-sm-6">
+                      <div className="text-center p-3 h-100" style={{background: "linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%)", borderRadius: "12px"}}>
+                        <div className="bg-warning rounded-circle d-inline-flex align-items-center justify-content-center mb-3 shadow" style={{width: '70px', height: '70px'}}>
+                          <span className="fs-1 fw-bold text-white">2</span>
+                        </div>
+                        <h6 className="fw-bold text-warning mb-2">Hold</h6>
+                        <p className="mb-0 small text-dark">Hold your breath gently for 4 seconds</p>
+                        <div className="mt-2 text-warning">⏸ 4s</div>
+                      </div>
+                    </div>
+                    <div className="col-md-3 col-sm-6">
+                      <div className="text-center p-3 h-100" style={{background: "linear-gradient(135deg, #F3E5F5 0%, #E1BEE7 100%)", borderRadius: "12px"}}>
+                        <div className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center mb-3 shadow" style={{width: '70px', height: '70px'}}>
+                          <span className="fs-1 fw-bold text-white">3</span>
+                        </div>
+                        <h6 className="fw-bold text-success mb-2">Exhale</h6>
+                        <p className="mb-0 small text-dark">Breathe out slowly through your mouth for 4 seconds</p>
+                        <div className="mt-2 text-success">↓ 4s</div>
+                      </div>
+                    </div>
+                    <div className="col-md-3 col-sm-6">
+                      <div className="text-center p-3 h-100" style={{background: "linear-gradient(135deg, #FCE4EC 0%, #F8BBD0 100%)", borderRadius: "12px"}}>
+                        <div className="bg-info rounded-circle d-inline-flex align-items-center justify-content-center mb-3 shadow" style={{width: '70px', height: '70px'}}>
+                          <span className="fs-1 fw-bold text-white">4</span>
+                        </div>
+                        <h6 className="fw-bold text-info mb-2">Hold Again</h6>
+                        <p className="mb-0 small text-dark">Hold your breath again for 4 seconds</p>
+                        <div className="mt-2 text-info">⏸ 4s</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Benefits and Tips */}
           <div className="row mb-5">
-            <div className="col-md-12 mb-4">
-              <div className="card shadow border-0 bg-gradient" style={{background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"}}>
-                <div className="card-body p-4 text-white">
-                  <h5 className="card-title fw-bold mb-3">Box Breathing (4-4-4-4 Method)</h5>
-                  <p className="mb-4">Used by Navy SEALs and athletes to reduce stress and improve focus. Follow these four simple steps:</p>
-                  <div className="row g-3">
-                    <div className="col-md-3">
-                      <div className="bg-white bg-opacity-25 p-3 rounded text-center">
-                        <div className="fs-1 mb-2">1️⃣</div>
-                        <h6 className="fw-bold">Inhale</h6>
-                        <p className="mb-0 small">Breathe in slowly for 4 seconds</p>
-                      </div>
-                    </div>
-                    <div className="col-md-3">
-                      <div className="bg-white bg-opacity-25 p-3 rounded text-center">
-                        <div className="fs-1 mb-2">2️⃣</div>
-                        <h6 className="fw-bold">Hold</h6>
-                        <p className="mb-0 small">Hold your breath for 4 seconds</p>
-                      </div>
-                    </div>
-                    <div className="col-md-3">
-                      <div className="bg-white bg-opacity-25 p-3 rounded text-center">
-                        <div className="fs-1 mb-2">3️⃣</div>
-                        <h6 className="fw-bold">Exhale</h6>
-                        <p className="mb-0 small">Breathe out slowly for 4 seconds</p>
-                      </div>
-                    </div>
-                    <div className="col-md-3">
-                      <div className="bg-white bg-opacity-25 p-3 rounded text-center">
-                        <div className="fs-1 mb-2">4️⃣</div>
-                        <h6 className="fw-bold">Hold</h6>
-                        <p className="mb-0 small">Hold again for 4 seconds</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="alert alert-light mt-4 mb-0">
-                    <strong>💡 Pro Tip:</strong> Repeat this cycle 4-5 times. Practice daily for best results!
-                  </div>
+            <div className="col-md-6 mb-3">
+              <div className="card shadow-sm border-0 h-100" style={{borderRadius: "12px", background: "#f8f9fa"}}>
+                <div className="card-body p-4">
+                  <h6 className="fw-bold mb-3 text-success">
+                    <span className="me-2">✨</span>Benefits
+                  </h6>
+                  <ul className="mb-0" style={{lineHeight: "2"}}>
+                    <li>Reduces stress and anxiety instantly</li>
+                    <li>Improves focus and mental clarity</li>
+                    <li>Regulates nervous system</li>
+                    <li>Lowers blood pressure naturally</li>
+                    <li>Can be done anywhere, anytime</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div className="col-md-6 mb-3">
+              <div className="card shadow-sm border-0 h-100" style={{borderRadius: "12px", background: "#f8f9fa"}}>
+                <div className="card-body p-4">
+                  <h6 className="fw-bold mb-3 text-info">
+                    <span className="me-2">💡</span>Pro Tips
+                  </h6>
+                  <ul className="mb-0" style={{lineHeight: "2"}}>
+                    <li>Practice in a quiet, comfortable space</li>
+                    <li>Sit with your back straight</li>
+                    <li>Repeat the cycle 4-5 times</li>
+                    <li>Practice daily for best results</li>
+                    <li>Use during stressful moments</li>
+                  </ul>
                 </div>
               </div>
             </div>
