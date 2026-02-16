@@ -142,6 +142,27 @@ function optionalAuthenticateJWT(req, res, next) {
   next();
 }
 
+// Helper function: Get comment filter for visibility
+function getCommentFilter(userRole) {
+  // Admins and counselors can see all comments except soft-deleted ones
+  if (userRole === 'admin' || userRole === 'counselor') {
+    return {
+      deleted: false
+    };
+  }
+  
+  // Regular users can only see non-deleted, non-hidden comments
+  return {
+    deleted: false,
+    hiddenByModerator: false
+  };
+}
+
+// Helper function: Check if user can moderate
+function canModerate(userRole) {
+  return userRole === 'admin' || userRole === 'counselor';
+}
+
 // Chatbot API route
 app.post('/api/chatbot', optionalAuthenticateJWT, async (req, res) => {
   const { message, anonymous, sessionId } = req.body;
@@ -797,10 +818,11 @@ app.post('/api/posts', authenticateJWT, async (req, res) => {
 });
 
 // Get all posts
-app.get('/api/posts', async (req, res) => {
+app.get('/api/posts', optionalAuthenticateJWT, async (req, res) => {
   try {
     const { flagged } = req.query;
     const where = {};
+    const userRole = req.user?.role || 'user';
     
     // Only show flagged posts to admins/counselors
     if (flagged === 'true') {
@@ -809,11 +831,15 @@ app.get('/api/posts', async (req, res) => {
       where.flagged = false; // Default: hide flagged posts
     }
     
+    // Get comment filter based on user role
+    const commentFilter = getCommentFilter(userRole);
+    
     const posts = await prisma.post.findMany({
       where,
       include: {
         user: { select: { id: true, email: true, role: true } },
         comments: {
+          where: commentFilter,
           include: {
             user: { select: { id: true, email: true, role: true } }
           },
@@ -829,13 +855,17 @@ app.get('/api/posts', async (req, res) => {
 });
 
 // Get specific post with comments
-app.get('/api/posts/:id', async (req, res) => {
+app.get('/api/posts/:id', optionalAuthenticateJWT, async (req, res) => {
   try {
+    const userRole = req.user?.role || 'user';
+    const commentFilter = getCommentFilter(userRole);
+    
     const post = await prisma.post.findUnique({
       where: { id: Number(req.params.id) },
       include: {
         user: { select: { id: true, email: true, role: true } },
         comments: {
+          where: commentFilter,
           include: {
             user: { select: { id: true, email: true, role: true } }
           },
@@ -994,7 +1024,7 @@ app.put('/api/comments/:id', authenticateJWT, async (req, res) => {
   }
 });
 
-// Delete comment
+// Delete comment (soft delete)
 app.delete('/api/comments/:id', authenticateJWT, async (req, res) => {
   try {
     const commentId = Number(req.params.id);
@@ -1002,13 +1032,26 @@ app.delete('/api/comments/:id', authenticateJWT, async (req, res) => {
     
     if (!existing) return res.status(404).json({ error: 'Comment not found' });
     
+    // Check if already deleted
+    if (existing.deleted) {
+      return res.status(400).json({ error: 'Comment already deleted' });
+    }
+    
     // Only owner or admin can delete
     if (existing.userId !== req.user.userId && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Forbidden' });
     }
     
-    await prisma.comment.delete({ where: { id: commentId } });
-    res.json({ message: 'Comment deleted' });
+    // Soft delete - mark as deleted instead of removing from database
+    await prisma.comment.update({ 
+      where: { id: commentId },
+      data: { 
+        deleted: true,
+        deletedAt: new Date()
+      }
+    });
+    
+    res.json({ message: 'Comment deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete comment', details: err.message });
   }
@@ -1033,22 +1076,256 @@ app.post('/api/comments/:id/like', authenticateJWT, async (req, res) => {
   }
 });
 
-// Flag a comment
+// Flag a comment (with safety checks)
 app.post('/api/comments/:id/flag', authenticateJWT, async (req, res) => {
   try {
     const commentId = Number(req.params.id);
+    const { reason } = req.body;
+    const userId = req.user.userId;
+    
+    // Check if comment exists and is not deleted
+    const comment = await prisma.comment.findUnique({ 
+      where: { id: commentId },
+      include: { user: { select: { id: true } } }
+    });
+    
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+    
+    if (comment.deleted) {
+      return res.status(400).json({ error: 'Cannot flag a deleted comment' });
+    }
+    
+    // Prevent flagging own comment
+    if (comment.userId === userId) {
+      return res.status(400).json({ error: 'You cannot flag your own comment' });
+    }
+    
+    // Check if user has already flagged this comment
+    const existingFlag = await prisma.commentFlag.findUnique({
+      where: {
+        commentId_userId: {
+          commentId,
+          userId
+        }
+      }
+    });
+    
+    if (existingFlag) {
+      return res.status(400).json({ error: 'You have already flagged this comment' });
+    }
+    
+    // Create the flag
+    const flag = await prisma.commentFlag.create({
+      data: {
+        commentId,
+        userId,
+        reason: reason || 'No reason provided'
+      }
+    });
+    
+    // Update comment flag count and flagged status
+    const updatedComment = await prisma.comment.update({
+      where: { id: commentId },
+      data: { 
+        flagCount: { increment: 1 },
+        flagged: true
+      }
+    });
+    
+    res.json({ 
+      message: 'Comment flagged for review',
+      flag,
+      flagCount: updatedComment.flagCount
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to flag comment', details: err.message });
+  }
+});
+
+// ========== MODERATION ROUTES (Admin/Counselor Only) ==========
+
+// Get all flagged comments
+app.get('/api/moderation/flagged-comments', authenticateJWT, requireRole('admin', 'counselor'), async (req, res) => {
+  try {
+    const flaggedComments = await prisma.comment.findMany({
+      where: {
+        flagged: true,
+        deleted: false
+      },
+      include: {
+        user: { select: { id: true, email: true, role: true } },
+        post: { select: { id: true, title: true } },
+        flags: {
+          include: {
+            user: { select: { id: true, email: true } }
+          },
+          orderBy: { createdAt: 'desc' }
+        }
+      },
+      orderBy: { flagCount: 'desc' }
+    });
+    
+    res.json({ 
+      flaggedComments,
+      total: flaggedComments.length 
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch flagged comments', details: err.message });
+  }
+});
+
+// Get flags for a specific comment
+app.get('/api/comments/:id/flags', authenticateJWT, requireRole('admin', 'counselor'), async (req, res) => {
+  try {
+    const commentId = Number(req.params.id);
+    
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId },
+      include: {
+        flags: {
+          include: {
+            user: { select: { id: true, email: true, role: true } }
+          },
+          orderBy: { createdAt: 'desc' }
+        },
+        user: { select: { id: true, email: true, role: true } }
+      }
+    });
+    
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+    
+    res.json({ 
+      comment: {
+        id: comment.id,
+        content: comment.content,
+        flagCount: comment.flagCount,
+        flagged: comment.flagged,
+        hiddenByModerator: comment.hiddenByModerator,
+        moderatorNote: comment.moderatorNote,
+        author: comment.user
+      },
+      flags: comment.flags
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch comment flags', details: err.message });
+  }
+});
+
+// Hide a comment (moderator action)
+app.post('/api/moderation/comments/:id/hide', authenticateJWT, requireRole('admin', 'counselor'), async (req, res) => {
+  try {
+    const commentId = Number(req.params.id);
+    const { moderatorNote } = req.body;
+    
     const comment = await prisma.comment.findUnique({ where: { id: commentId } });
     
-    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+    
+    if (comment.deleted) {
+      return res.status(400).json({ error: 'Cannot hide a deleted comment' });
+    }
+    
+    if (comment.hiddenByModerator) {
+      return res.status(400).json({ error: 'Comment is already hidden' });
+    }
     
     const updated = await prisma.comment.update({
       where: { id: commentId },
-      data: { flagged: true }
+      data: {
+        hiddenByModerator: true,
+        moderatorNote: moderatorNote || 'Hidden by moderator'
+      }
     });
     
-    res.json({ comment: updated, message: 'Comment flagged for review' });
+    res.json({ 
+      message: 'Comment hidden successfully',
+      comment: {
+        id: updated.id,
+        hiddenByModerator: updated.hiddenByModerator,
+        moderatorNote: updated.moderatorNote
+      }
+    });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to flag comment', details: err.message });
+    res.status(500).json({ error: 'Failed to hide comment', details: err.message });
+  }
+});
+
+// Unhide a comment (moderator action)
+app.post('/api/moderation/comments/:id/unhide', authenticateJWT, requireRole('admin', 'counselor'), async (req, res) => {
+  try {
+    const commentId = Number(req.params.id);
+    
+    const comment = await prisma.comment.findUnique({ where: { id: commentId } });
+    
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+    
+    if (!comment.hiddenByModerator) {
+      return res.status(400).json({ error: 'Comment is not hidden' });
+    }
+    
+    const updated = await prisma.comment.update({
+      where: { id: commentId },
+      data: {
+        hiddenByModerator: false,
+        moderatorNote: null
+      }
+    });
+    
+    res.json({ 
+      message: 'Comment unhidden successfully',
+      comment: {
+        id: updated.id,
+        hiddenByModerator: updated.hiddenByModerator
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to unhide comment', details: err.message });
+  }
+});
+
+// Clear all flags from a comment (admin only)
+app.delete('/api/moderation/comments/:id/flags', authenticateJWT, requireRole('admin'), async (req, res) => {
+  try {
+    const commentId = Number(req.params.id);
+    
+    const comment = await prisma.comment.findUnique({ where: { id: commentId } });
+    
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+    
+    // Delete all flags for this comment
+    await prisma.commentFlag.deleteMany({
+      where: { commentId }
+    });
+    
+    // Update comment to clear flag status
+    const updated = await prisma.comment.update({
+      where: { id: commentId },
+      data: {
+        flagged: false,
+        flagCount: 0
+      }
+    });
+    
+    res.json({ 
+      message: 'All flags cleared successfully',
+      comment: {
+        id: updated.id,
+        flagged: updated.flagged,
+        flagCount: updated.flagCount
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to clear flags', details: err.message });
   }
 });
 
