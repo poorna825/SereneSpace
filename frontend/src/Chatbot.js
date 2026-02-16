@@ -19,28 +19,6 @@ function Chatbot() {
   // Crisis keywords to check in bot responses
   const crisisKeywords = ['emergency', 'hotline', 'help immediately', 'crisis', 'suicide', 'self-harm'];
 
-  // Emotion emoji mapping
-  const emotionEmojis = {
-    anger: '😠',
-    disgust: '😖',
-    fear: '😰',
-    joy: '😊',
-    sadness: '😢',
-    surprise: '😲',
-    neutral: '😐'
-  };
-
-  // Emotion colors
-  const emotionColors = {
-    anger: '#dc3545',
-    disgust: '#6c757d',
-    fear: '#ffc107',
-    joy: '#28a745',
-    sadness: '#17a2b8',
-    surprise: '#fd7e14',
-    neutral: '#6c757d'
-  };
-
   const handleSend = async () => {
     if (input.trim() === "") return;
 
@@ -136,7 +114,7 @@ function Chatbot() {
       <h2 className="text-center text-primary mb-4">
         Chat with SereneBot 🤖
         <small className="d-block text-muted fs-6 mt-2">
-          AI-powered emotional support with real-time emotion detection
+          AI-powered emotional support and mental wellness companion
         </small>
       </h2>
 
@@ -207,19 +185,6 @@ function Chatbot() {
                 >
                   {msg.text}
                 </span>
-                {msg.emotion && (
-                  <div className="mt-1 small">
-                    <span 
-                      className="badge"
-                      style={{ 
-                        backgroundColor: emotionColors[msg.emotion] || '#6c757d',
-                        fontSize: "0.7rem"
-                      }}
-                    >
-                      {emotionEmojis[msg.emotion]} {msg.emotion}
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
           ))}
@@ -261,30 +226,6 @@ function Chatbot() {
               )}
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* Emotion Legend */}
-      <div className="card mt-3 shadow-sm">
-        <div className="card-body">
-          <h6 className="card-title mb-3">Emotion Detection Guide</h6>
-          <div className="d-flex flex-wrap gap-2">
-            {Object.entries(emotionEmojis).map(([emotion, emoji]) => (
-              <span 
-                key={emotion}
-                className="badge"
-                style={{ 
-                  backgroundColor: emotionColors[emotion],
-                  fontSize: "0.85rem"
-                }}
-              >
-                {emoji} {emotion.charAt(0).toUpperCase() + emotion.slice(1)}
-              </span>
-            ))}
-          </div>
-          <p className="mb-0 mt-2 small text-muted">
-            SereneBot uses AI to detect emotions in your messages and provide empathetic, personalized support.
-          </p>
         </div>
       </div>
     </div>
