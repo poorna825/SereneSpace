@@ -66,6 +66,40 @@ function Home() {
         <EmergencySupport />
       </section>
 
+      {/* Mental Health Quiz Section */}
+      <section className="container my-5 py-4">
+        <div className="card border-0 shadow-lg" style={{background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"}}>
+          <div className="card-body text-center text-white py-5">
+            <h2 className="fw-bold mb-3">Take a Mental Health Self-Check</h2>
+            <p className="lead mb-4 mx-auto" style={{maxWidth: "700px"}}>
+              Understanding your mental health is an important step in your wellness journey. 
+              These brief, confidential quizzes can help you reflect on your current well-being. 
+              Remember, these are not medical diagnoses—just helpful tools for self-awareness.
+            </p>
+            <div className="d-flex gap-3 justify-content-center flex-wrap">
+              <a 
+                href="https://share.google/d2UzidJEuTX1TqMWJ" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="btn btn-lg btn-light shadow px-5 py-3 fw-bold"
+                style={{minWidth: "200px"}}
+              >
+                Mental Health Check
+              </a>
+              <a 
+                href="https://share.google/aYQ9G4JBkQdc5Zipd" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="btn btn-lg btn-light shadow px-5 py-3 fw-bold"
+                style={{minWidth: "200px"}}
+              >
+                Wellness Assessment
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
       <section className="container my-5 py-4">
         <h2 className="text-center mb-5 fw-bold">Explore Our Features</h2>
