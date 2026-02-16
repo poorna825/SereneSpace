@@ -201,7 +201,7 @@ function App() {
                 {user && (
                   <>
                     <li className="nav-item">
-                      <span className="nav-link text-info">{user.email} ({user.role})</span>
+                      <span className="nav-link text-info">{user.username || user.email} ({user.role})</span>
                     </li>
                     <li className="nav-item">
                       <button className="nav-link btn btn-link" onClick={handleLogout}>Logout</button>

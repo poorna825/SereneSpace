@@ -16,7 +16,9 @@ datasource db {
 
 model User {
   id          Int           @id @default(autoincrement())
-  email       String        @unique
+  username    String?       @unique  // Public nickname, visible to all
+  fullName    String?                // Real name, private (counselor/admin only)
+  email       String        @unique  // Private, for login and counselor/admin access
   password    String
   role        String
   createdAt   DateTime      @default(now())

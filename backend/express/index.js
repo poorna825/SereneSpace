@@ -42,20 +42,46 @@ app.get('/', (req, res) => {
 
 // User registration
 app.post('/api/register', async (req, res) => {
-  const { email, password, role } = req.body;
-  if (!email || !password || !role) {
-    return res.status(400).json({ error: 'Missing fields' });
+  const { username, fullName, email, password, role } = req.body;
+  
+  // Validate required fields
+  if (!username || !fullName || !email || !password || !role) {
+    return res.status(400).json({ error: 'Missing required fields: username, fullName, email, password, role' });
   }
+  
   try {
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      return res.status(409).json({ error: 'User already exists' });
+    // Check if email already exists
+    const existingEmail = await prisma.user.findUnique({ where: { email } });
+    if (existingEmail) {
+      return res.status(409).json({ error: 'Email already registered' });
     }
+    
+    // Check if username already exists
+    const existingUsername = await prisma.user.findUnique({ where: { username } });
+    if (existingUsername) {
+      return res.status(409).json({ error: 'Username already taken' });
+    }
+    
+    // Hash password and create user
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { email, password: hashedPassword, role },
+      data: { 
+        username,
+        fullName,
+        email,
+        password: hashedPassword,
+        role
+      },
     });
-    res.json({ user: { id: user.id, email: user.email, role: user.role } });
+    
+    // Return only public information
+    res.json({ 
+      user: { 
+        id: user.id,
+        username: user.username,
+        role: user.role
+      } 
+    });
   } catch (err) {
     res.status(500).json({ error: 'User registration failed', details: err.message });
   }
@@ -77,7 +103,18 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '2h' });
-    res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+    
+    // User sees their own full information on login
+    res.json({ 
+      token, 
+      user: { 
+        id: user.id, 
+        username: user.username || `user${user.id}`,
+        fullName: user.fullName,
+        email: user.email, 
+        role: user.role 
+      } 
+    });
   } catch (err) {
     res.status(500).json({ error: 'Login failed', details: err.message });
   }
@@ -94,7 +131,18 @@ app.get('/api/profile', async (req, res) => {
     const payload = jwt.verify(token, JWT_SECRET);
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ user: { id: user.id, email: user.email, role: user.role } });
+    
+    // User accessing their own profile gets all their data
+    res.json({ 
+      user: { 
+        id: user.id, 
+        username: user.username || `user${user.id}`,
+        fullName: user.fullName, 
+        email: user.email, 
+        role: user.role,
+        createdAt: user.createdAt
+      } 
+    });
   } catch (err) {
     res.status(401).json({ error: 'Invalid or expired token' });
   }
@@ -161,6 +209,103 @@ function getCommentFilter(userRole) {
 // Helper function: Check if user can moderate
 function canModerate(userRole) {
   return userRole === 'admin' || userRole === 'counselor';
+}
+
+// ============ USER PRIVACY HELPER FUNCTIONS ============
+
+/**
+ * Get public user info (visible to everyone)
+ * Returns: id, username, role
+ */
+function getPublicUserInfo(user) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    username: user.username || `user${user.id}`, // Fallback for legacy users
+    role: user.role
+  };
+}
+
+/**
+ * Get user info based on viewer's relationship and role
+ * @param {Object} user - The user whose info is being accessed
+ * @param {Object} viewer - The user who is viewing (from req.user)
+ * @param {Object} prisma - Prisma client instance
+ * @returns {Promise<Object>} User info based on privacy rules
+ */
+async function getUserInfoBasedOnPrivacy(user, viewer, prismaClient) {
+  if (!user) return null;
+  
+  // If no viewer, return only public info
+  if (!viewer) {
+    return getPublicUserInfo(user);
+  }
+  
+  // Admin can see everything
+  if (viewer.role === 'admin') {
+    return {
+      id: user.id,
+      username: user.username || `user${user.id}`,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt,
+      _privacyLevel: 'admin'
+    };
+  }
+  
+  // Counselor can see fullName and email of their connected users
+  if (viewer.role === 'counselor') {
+    // Check if there's an appointment connection between counselor and user
+    const appointment = await prismaClient.appointment.findFirst({
+      where: {
+        OR: [
+          { userId: user.id, counselorId: viewer.userId },
+          { userId: viewer.userId, counselorId: user.id }
+        ]
+      }
+    });
+    
+    if (appointment) {
+      // Counselor has a connection with this user
+      return {
+        id: user.id,
+        username: user.username || `user${user.id}`,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        _privacyLevel: 'counselor-connection'
+      };
+    }
+  }
+  
+  // Regular user viewing another user or counselor without connection
+  return getPublicUserInfo(user);
+}
+
+/**
+ * Format user select statement based on viewer role
+ * Returns fields that should be selected from database
+ */
+function getUserSelectFields(viewerRole) {
+  const baseFields = {
+    id: true,
+    username: true,
+    role: true
+  };
+  
+  // Admin and counselor can see all fields (privacy filtering happens in getUserInfoBasedOnPrivacy)
+  if (viewerRole === 'admin' || viewerRole === 'counselor') {
+    return {
+      ...baseFields,
+      fullName: true,
+      email: true,
+      createdAt: true
+    };
+  }
+  
+  // Regular users only see public fields
+  return baseFields;
 }
 
 // Chatbot API route
@@ -599,8 +744,22 @@ function generateEmotionResponse(emotion, userMessage) {
 // User CRUD endpoints (protected)
 app.get('/api/users', authenticateJWT, async (req, res) => {
   try {
-    const users = await prisma.user.findMany({ select: { id: true, email: true, role: true, createdAt: true } });
-    res.json({ users });
+    const users = await prisma.user.findMany({ 
+      select: { id: true, username: true, fullName: true, email: true, role: true, createdAt: true } 
+    });
+    
+    // Format based on viewer role
+    const isPrivileged = req.user.role === 'admin';
+    const formattedUsers = users.map(user => isPrivileged ? {
+      id: user.id,
+      username: user.username || `user${user.id}`,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt
+    } : getPublicUserInfo(user));
+    
+    res.json({ users: formattedUsers });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch users', details: err.message });
   }
@@ -608,9 +767,17 @@ app.get('/api/users', authenticateJWT, async (req, res) => {
 
 app.get('/api/users/:id', authenticateJWT, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: Number(req.params.id) }, select: { id: true, email: true, role: true, createdAt: true } });
+    const targetUserId = Number(req.params.id);
+    const user = await prisma.user.findUnique({ 
+      where: { id: targetUserId }, 
+      select: { id: true, username: true, fullName: true, email: true, role: true, createdAt: true } 
+    });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ user });
+    
+    // Use privacy logic to determine what to show
+    const formattedUser = await getUserInfoBasedOnPrivacy(user, req.user, prisma);
+    
+    res.json({ user: formattedUser });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch user', details: err.message });
   }
@@ -618,9 +785,34 @@ app.get('/api/users/:id', authenticateJWT, async (req, res) => {
 
 app.put('/api/users/:id', authenticateJWT, async (req, res) => {
   try {
-    const { email, role } = req.body;
-    const user = await prisma.user.update({ where: { id: Number(req.params.id) }, data: { email, role } });
-    res.json({ user: { id: user.id, email: user.email, role: user.role } });
+    const { username, fullName, email, role } = req.body;
+    const targetUserId = Number(req.params.id);
+    
+    // Only admin or the user themselves can update
+    if (req.user.role !== 'admin' && req.user.userId !== targetUserId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    
+    // Non-admins can't change role
+    const updateData = {};
+    if (username !== undefined) updateData.username = username;
+    if (fullName !== undefined) updateData.fullName = fullName;
+    if (email !== undefined) updateData.email = email;
+    if (role !== undefined && req.user.role === 'admin') updateData.role = role;
+    
+    const user = await prisma.user.update({ 
+      where: { id: targetUserId }, 
+      data: updateData,
+      select: { id: true, username: true, fullName: true, email: true, role: true } 
+    });
+    
+    res.json({ user: {
+      id: user.id, 
+      username: user.username || `user${user.id}`,
+      fullName: user.fullName,
+      email: user.email, 
+      role: user.role
+    } });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update user', details: err.message });
   }
@@ -675,12 +867,36 @@ app.get('/api/appointments', authenticateJWT, async (req, res) => {
     const appointments = await prisma.appointment.findMany({
       where,
       include: {
-        user: { select: { id: true, email: true, role: true } },
-        counselor: { select: { id: true, email: true, role: true } }
+        user: { select: { id: true, username: true, fullName: true, email: true, role: true } },
+        counselor: { select: { id: true, username: true, fullName: true, email: true, role: true } }
       },
       orderBy: { scheduledAt: 'asc' }
     });
-    res.json({ appointments });
+    
+    // Format user info based on privacy rules
+    // Counselors and admins see full info in appointments (therapeutic relationship)
+    const formattedAppointments = appointments.map(apt => {
+      const isPrivileged = req.user.role === 'admin' || req.user.role === 'counselor';
+      return {
+        ...apt,
+        user: isPrivileged ? {
+          id: apt.user.id,
+          username: apt.user.username || `user${apt.user.id}`,
+          fullName: apt.user.fullName,
+          email: apt.user.email,
+          role: apt.user.role
+        } : getPublicUserInfo(apt.user),
+        counselor: isPrivileged ? {
+          id: apt.counselor.id,
+          username: apt.counselor.username || `user${apt.counselor.id}`,
+          fullName: apt.counselor.fullName,
+          email: apt.counselor.email,
+          role: apt.counselor.role
+        } : getPublicUserInfo(apt.counselor)
+      };
+    });
+    
+    res.json({ appointments: formattedAppointments });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch appointments', details: err.message });
   }
@@ -699,11 +915,24 @@ app.get('/api/appointments/counselor/:counselorId', authenticateJWT, requireRole
     const appointments = await prisma.appointment.findMany({
       where: { counselorId },
       include: {
-        user: { select: { id: true, email: true, role: true } }
+        user: { select: { id: true, username: true, fullName: true, email: true, role: true } }
       },
       orderBy: { scheduledAt: 'asc' }
     });
-    res.json({ appointments });
+    
+    // Counselors see full patient info in their appointments
+    const formattedAppointments = appointments.map(apt => ({
+      ...apt,
+      user: {
+        id: apt.user.id,
+        username: apt.user.username || `user${apt.user.id}`,
+        fullName: apt.user.fullName,
+        email: apt.user.email,
+        role: apt.user.role
+      }
+    }));
+    
+    res.json({ appointments: formattedAppointments });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch counselor appointments', details: err.message });
   }
@@ -715,8 +944,8 @@ app.get('/api/appointments/:id', authenticateJWT, async (req, res) => {
     const appointment = await prisma.appointment.findUnique({
       where: { id: Number(req.params.id) },
       include: {
-        user: { select: { id: true, email: true, role: true } },
-        counselor: { select: { id: true, email: true, role: true } }
+        user: { select: { id: true, username: true, fullName: true, email: true, role: true } },
+        counselor: { select: { id: true, username: true, fullName: true, email: true, role: true } }
       }
     });
     
@@ -727,7 +956,27 @@ app.get('/api/appointments/:id', authenticateJWT, async (req, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     
-    res.json({ appointment });
+    // Format with full info for admins/counselors, public info for regular users viewing their own appointment
+    const isPrivileged = req.user.role === 'admin' || req.user.role === 'counselor';
+    const formattedAppointment = {
+      ...appointment,
+      user: isPrivileged ? {
+        id: appointment.user.id,
+        username: appointment.user.username || `user${appointment.user.id}`,
+        fullName: appointment.user.fullName,
+        email: appointment.user.email,
+        role: appointment.user.role
+      } : getPublicUserInfo(appointment.user),
+      counselor: isPrivileged ? {
+        id: appointment.counselor.id,
+        username: appointment.counselor.username || `user${appointment.counselor.id}`,
+        fullName: appointment.counselor.fullName,
+        email: appointment.counselor.email,
+        role: appointment.counselor.role
+      } : getPublicUserInfo(appointment.counselor)
+    };
+    
+    res.json({ appointment: formattedAppointment });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch appointment', details: err.message });
   }
@@ -762,12 +1011,32 @@ app.put('/api/appointments/:id', authenticateJWT, async (req, res) => {
       where: { id: appointmentId },
       data: updateData,
       include: {
-        user: { select: { id: true, email: true, role: true } },
-        counselor: { select: { id: true, email: true, role: true } }
+        user: { select: { id: true, username: true, fullName: true, email: true, role: true } },
+        counselor: { select: { id: true, username: true, fullName: true, email: true, role: true } }
       }
     });
     
-    res.json({ appointment });
+    // Format with full info for admins/counselors
+    const isPrivileged = req.user.role === 'admin' || req.user.role === 'counselor';
+    const formattedAppointment = {
+      ...appointment,
+      user: isPrivileged ? {
+        id: appointment.user.id,
+        username: appointment.user.username || `user${appointment.user.id}`,
+        fullName: appointment.user.fullName,
+        email: appointment.user.email,
+        role: appointment.user.role
+      } : getPublicUserInfo(appointment.user),
+      counselor: isPrivileged ? {
+        id: appointment.counselor.id,
+        username: appointment.counselor.username || `user${appointment.counselor.id}`,
+        fullName: appointment.counselor.fullName,
+        email: appointment.counselor.email,
+        role: appointment.counselor.role
+      } : getPublicUserInfo(appointment.counselor)
+    };
+    
+    res.json({ appointment: formattedAppointment });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update appointment', details: err.message });
   }
@@ -837,18 +1106,29 @@ app.get('/api/posts', optionalAuthenticateJWT, async (req, res) => {
     const posts = await prisma.post.findMany({
       where,
       include: {
-        user: { select: { id: true, email: true, role: true } },
+        user: { select: { id: true, username: true, role: true } },
         comments: {
           where: commentFilter,
           include: {
-            user: { select: { id: true, email: true, role: true } }
+            user: { select: { id: true, username: true, role: true } }
           },
           orderBy: { createdAt: 'desc' }
         }
       },
       orderBy: { createdAt: 'desc' }
     });
-    res.json({ posts });
+    
+    // Format user info - use public username only
+    const postsWithPublicInfo = posts.map(post => ({
+      ...post,
+      user: getPublicUserInfo(post.user),
+      comments: post.comments.map(comment => ({
+        ...comment,
+        user: getPublicUserInfo(comment.user)
+      }))
+    }));
+    
+    res.json({ posts: postsWithPublicInfo });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch posts', details: err.message });
   }
@@ -863,11 +1143,11 @@ app.get('/api/posts/:id', optionalAuthenticateJWT, async (req, res) => {
     const post = await prisma.post.findUnique({
       where: { id: Number(req.params.id) },
       include: {
-        user: { select: { id: true, email: true, role: true } },
+        user: { select: { id: true, username: true, role: true } },
         comments: {
           where: commentFilter,
           include: {
-            user: { select: { id: true, email: true, role: true } }
+            user: { select: { id: true, username: true, role: true } }
           },
           orderBy: { createdAt: 'asc' }
         }
@@ -875,7 +1155,18 @@ app.get('/api/posts/:id', optionalAuthenticateJWT, async (req, res) => {
     });
     
     if (!post) return res.status(404).json({ error: 'Post not found' });
-    res.json({ post });
+    
+    // Format user info - use public username only
+    const postWithPublicInfo = {
+      ...post,
+      user: getPublicUserInfo(post.user),
+      comments: post.comments.map(comment => ({
+        ...comment,
+        user: getPublicUserInfo(comment.user)
+      }))
+    };
+    
+    res.json({ post: postWithPublicInfo });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch post', details: err.message });
   }
@@ -986,11 +1277,17 @@ app.post('/api/posts/:id/comments', authenticateJWT, async (req, res) => {
         content
       },
       include: {
-        user: { select: { id: true, email: true, role: true } }
+        user: { select: { id: true, username: true, role: true } }
       }
     });
     
-    res.json({ comment });
+    // Return comment with public user info
+    res.json({ 
+      comment: {
+        ...comment,
+        user: getPublicUserInfo(comment.user)
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create comment', details: err.message });
   }
@@ -1014,11 +1311,17 @@ app.put('/api/comments/:id', authenticateJWT, async (req, res) => {
       where: { id: commentId },
       data: { content },
       include: {
-        user: { select: { id: true, email: true, role: true } }
+        user: { select: { id: true, username: true, role: true } }
       }
     });
     
-    res.json({ comment });
+    // Return comment with public user info
+    res.json({ 
+      comment: {
+        ...comment,
+        user: getPublicUserInfo(comment.user)
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update comment', details: err.message });
   }
@@ -1155,11 +1458,11 @@ app.get('/api/moderation/flagged-comments', authenticateJWT, requireRole('admin'
         deleted: false
       },
       include: {
-        user: { select: { id: true, email: true, role: true } },
+        user: { select: { id: true, username: true, role: true } },
         post: { select: { id: true, title: true } },
         flags: {
           include: {
-            user: { select: { id: true, email: true } }
+            user: { select: { id: true, username: true } }
           },
           orderBy: { createdAt: 'desc' }
         }
@@ -1167,9 +1470,19 @@ app.get('/api/moderation/flagged-comments', authenticateJWT, requireRole('admin'
       orderBy: { flagCount: 'desc' }
     });
     
+    // Format user info - moderators see usernames
+    const formattedComments = flaggedComments.map(comment => ({
+      ...comment,
+      user: getPublicUserInfo(comment.user),
+      flags: comment.flags.map(flag => ({
+        ...flag,
+        user: getPublicUserInfo(flag.user)
+      }))
+    }));
+    
     res.json({ 
-      flaggedComments,
-      total: flaggedComments.length 
+      flaggedComments: formattedComments,
+      total: formattedComments.length 
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch flagged comments', details: err.message });
@@ -1186,11 +1499,11 @@ app.get('/api/comments/:id/flags', authenticateJWT, requireRole('admin', 'counse
       include: {
         flags: {
           include: {
-            user: { select: { id: true, email: true, role: true } }
+            user: { select: { id: true, username: true, role: true } }
           },
           orderBy: { createdAt: 'desc' }
         },
-        user: { select: { id: true, email: true, role: true } }
+        user: { select: { id: true, username: true, role: true } }
       }
     });
     
@@ -1206,7 +1519,7 @@ app.get('/api/comments/:id/flags', authenticateJWT, requireRole('admin', 'counse
         flagged: comment.flagged,
         hiddenByModerator: comment.hiddenByModerator,
         moderatorNote: comment.moderatorNote,
-        author: comment.user
+        author: getPublicUserInfo(comment.user)
       },
       flags: comment.flags
     });

@@ -10,6 +10,7 @@
   "dependencies": {
     "@huggingface/inference": "^4.13.12",
     "@prisma/client": "^6.19.2",
+    "axios": "^1.13.5",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",

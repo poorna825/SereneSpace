@@ -232,7 +232,7 @@ function PeerHub() {
                     <p className="card-text text-truncate">{post.content}</p>
                     <div className="d-flex justify-content-between align-items-center">
                       <small className="text-muted">
-                        By {post.user?.email || 'Anonymous'} • {new Date(post.createdAt).toLocaleDateString()}
+                        By {post.user?.username || 'Anonymous'} • {new Date(post.createdAt).toLocaleDateString()}
                       </small>
                       <div>
                         <button 
@@ -262,7 +262,7 @@ function PeerHub() {
               <div className="card-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
                 <h4>{selectedPost.title}</h4>
                 <p className="text-muted">
-                  By {selectedPost.user?.email || 'Anonymous'} • {new Date(selectedPost.createdAt).toLocaleDateString()}
+                  By {selectedPost.user?.username || 'Anonymous'} • {new Date(selectedPost.createdAt).toLocaleDateString()}
                 </p>
                 <p className="mb-3">{selectedPost.content}</p>
                 <div className="d-flex gap-2 mb-4">
@@ -305,7 +305,7 @@ function PeerHub() {
                       <p className="mb-1">{comment.content}</p>
                       <div className="d-flex justify-content-between align-items-center">
                         <small className="text-muted">
-                          By {comment.user?.email || 'Anonymous'} • {new Date(comment.createdAt).toLocaleDateString()}
+                          By {comment.user?.username || 'Anonymous'} • {new Date(comment.createdAt).toLocaleDateString()}
                         </small>
                         <button 
                           className="btn btn-sm btn-outline-primary"

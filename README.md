@@ -4,9 +4,17 @@ A comprehensive mental health and wellness platform designed specifically for In
 
 ## 🎯 Overview
 
-SereneSpace is a full-stack web application that combines AI technology with mental health resources to create a supportive digital environment. The platform offers an AI chatbot with emotion detection, breathing exercises, meditation guides, peer support forums, appointment scheduling, and curated mental health resources.
+SereneSpace is a full-stack web application that combines AI technology with mental health resources to create a supportive digital environment. The platform offers an AI chatbot with emotion detection, breathing exercises, meditation guides, peer support forums with **dual identity privacy system**, appointment scheduling, and curated mental health resources.
 
 ## ✨ Key Features
+
+### 🔒 Privacy & Security
+- **Dual Identity System**: 
+  - Public username for community interactions (posts, comments)
+  - Private fullName and email visible only to admins and assigned counselors
+- **Role-Based Access Control**: Admin, Counselor, and User roles with appropriate permissions
+- **Secure Authentication**: JWT-based authentication with bcrypt password hashing
+- **Comment Moderation**: Flag-based system with soft delete and admin controls
 
 ### 🤖 AI-Powered Chatbot
 - Emotion detection using OpenAI GPT models
@@ -23,12 +31,13 @@ SereneSpace is a full-stack web application that combines AI technology with men
 ### 👥 Peer Support Hub
 - Create and share posts about mental health experiences
 - Comment and react to community posts (❤️ Support, 💪 Strength, 🤗 Hug, ⭐ Inspiring)
-- Anonymous posting option for privacy
-- Safe and supportive community guidelines
+- **Username-based interactions** (full name kept private)
+- Safe and supportive community guidelines with moderation
 
 ### 📅 Professional Support
 - Book appointments with mental health professionals
 - Appointment status tracking (Pending, Confirmed, Completed, Cancelled)
+- **Counselor-patient privacy**: Counselors see patient details only for assigned appointments
 - Access to verified Indian therapy platforms:
   - **Practo**: Find therapists and psychiatrists
   - **TalktoAngel**: Online therapy and counseling
