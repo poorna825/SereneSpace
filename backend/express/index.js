@@ -1449,7 +1449,99 @@ app.post('/api/comments/:id/flag', authenticateJWT, async (req, res) => {
 
 // ========== MODERATION ROUTES (Admin/Counselor Only) ==========
 
-// Get all flagged comments
+// Get all flagged posts (for admin dashboard)
+app.get('/api/posts/flagged', authenticateJWT, requireRole('admin', 'counselor'), async (req, res) => {
+  try {
+    const flaggedPosts = await prisma.post.findMany({
+      where: { flagged: true },
+      include: {
+        author: { select: { id: true, username: true, email: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json({ posts: flaggedPosts });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch flagged posts', details: err.message });
+  }
+});
+
+// Unflag a post (admin only)
+app.patch('/api/posts/:id/unflag', authenticateJWT, requireRole('admin'), async (req, res) => {
+  try {
+    const postId = Number(req.params.id);
+    const updated = await prisma.post.update({
+      where: { id: postId },
+      data: { flagged: false }
+    });
+    res.json({ post: updated, message: 'Post unflagged successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to unflag post', details: err.message });
+  }
+});
+
+// Get all flagged comments (for admin dashboard)
+app.get('/api/comments/flagged', authenticateJWT, requireRole('admin', 'counselor'), async (req, res) => {
+  try {
+    const flaggedComments = await prisma.comment.findMany({
+      where: { 
+        flagged: true,
+        deleted: false
+      },
+      include: {
+        author: { select: { id: true, username: true, email: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json({ comments: flaggedComments });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch flagged comments', details: err.message });
+  }
+});
+
+// Unflag a comment (admin only)
+app.patch('/api/comments/:id/unflag', authenticateJWT, requireRole('admin'), async (req, res) => {
+  try {
+    const commentId = Number(req.params.id);
+    const updated = await prisma.comment.update({
+      where: { id: commentId },
+      data: { 
+        flagged: false,
+        flagCount: 0
+      }
+    });
+    
+    // Also clear all flags for this comment
+    await prisma.commentFlag.deleteMany({
+      where: { commentId }
+    });
+    
+    res.json({ comment: updated, message: 'Comment unflagged successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to unflag comment', details: err.message });
+  }
+});
+
+// Get all users (admin only)
+app.get('/api/admin/users', authenticateJWT, requireRole('admin'), async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        fullName: true,
+        role: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json({ users });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch users', details: err.message });
+  }
+});
+
+// Get all flagged comments (detailed moderation view)
 app.get('/api/moderation/flagged-comments', authenticateJWT, requireRole('admin', 'counselor'), async (req, res) => {
   try {
     const flaggedComments = await prisma.comment.findMany({
