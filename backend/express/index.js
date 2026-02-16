@@ -169,7 +169,7 @@ app.post('/api/chatbot', optionalAuthenticateJWT, async (req, res) => {
   
   // CRISIS DETECTION (highest priority)
   if (crisis) {
-    botReply = 'I\'m very concerned about what you\'re sharing. Please know that help is available right now. Would you like me to provide emergency resources? You can call 988 (Suicide Prevention Lifeline) or text HOME to 741741 (Crisis Text Line).';
+    botReply = 'I\'m very concerned about what you\'re sharing. Please know that help is available right now. 🇮🇳 India Crisis Helplines: AASRA (24x7) at +91 9820466726, Vandrevala Foundation at 1860 2662 345 or 1800 2333 330, iCall at +91 9152987821, or NIMHANS at 080-46110007. Emergency services: 112. You don\'t have to face this alone - professional help is just a call away.';
   }
   // DEPRESSION & HOPELESSNESS
   else if (lowerMessage.includes('depressed') || lowerMessage.includes('depression')) {
@@ -235,7 +235,7 @@ app.post('/api/chatbot', optionalAuthenticateJWT, async (req, res) => {
   }
   // COPING & HELP-SEEKING
   else if (lowerMessage.includes('therapy') || lowerMessage.includes('therapist') || lowerMessage.includes('counselor')) {
-    botReply = 'Seeking therapy is a brave and positive step. A therapist can provide personalized support and coping strategies. Would you like help finding mental health resources?';
+    botReply = 'Seeking therapy is a brave and positive step. A therapist can provide personalized support and coping strategies. In India, you can find therapists through Practo, TalktoAngel, or Amaha. Would you like more information about mental health resources?';
   }
   else if (lowerMessage.includes('medication') || lowerMessage.includes('meds')) {
     botReply = 'Medication can be an important part of treatment for some people. If you\'re considering medication, it\'s best to discuss it with a healthcare provider who can assess your needs.';

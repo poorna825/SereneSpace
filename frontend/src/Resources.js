@@ -134,17 +134,23 @@ function Resources() {
         <div className="d-flex align-items-center">
           <span className="fs-3 me-3">🚨</span>
           <div className="flex-grow-1">
-            <h5 className="alert-heading mb-2">In Crisis? Get Immediate Help</h5>
+            <h5 className="alert-heading mb-3">In Crisis? Get Immediate Help (India 🇮🇳)</h5>
             <div className="row g-3">
               <div className="col-md-4">
-                <strong>Suicide Hotline:</strong> <a href="tel:988" className="text-danger fw-bold">988</a>
+                <strong>AASRA (24x7):</strong><br/>
+                <a href="tel:+919820466726" className="text-danger fw-bold">+91 9820466726</a>
               </div>
               <div className="col-md-4">
-                <strong>Crisis Text:</strong> Text <span className="fw-bold">HOME</span> to <span className="fw-bold">741741</span>
+                <strong>Vandrevala Foundation:</strong><br/>
+                <a href="tel:18602662345" className="text-danger fw-bold">1860 2662 345</a> / <span className="fw-bold">1800 2333 330</span>
               </div>
               <div className="col-md-4">
-                <strong>International:</strong> <a href="https://findahelpline.com" target="_blank" rel="noopener noreferrer" className="text-danger fw-bold">findahelpline.com</a>
+                <strong>iCall (Mon-Sat):</strong><br/>
+                <a href="tel:+919152987821" className="text-danger fw-bold">+91 9152987821</a>
               </div>
+            </div>
+            <div className="text-center mt-3">
+              <small><strong>NIMHANS Crisis:</strong> <a href="tel:08046110007" className="text-danger fw-bold">080-46110007</a> | <strong>Emergency:</strong> <span className="fw-bold">112</span></small>
             </div>
           </div>
         </div>
@@ -356,53 +362,6 @@ function Resources() {
       {/* Reading and Learning Tab */}
       {(activeTab === 'all' || activeTab === 'reading') && (
         <>
-          {/* Mental Health Apps */}
-          <h4 className="mb-4 fw-bold">📱 Recommended Mental Health Apps</h4>
-          <div className="row mb-5">
-            <div className="col-lg-4 mb-4">
-              <div className="card h-100 shadow border-0">
-                <div className="card-body">
-                  <div className="fs-1 mb-3">🧘</div>
-                  <h5 className="card-title fw-bold">Headspace</h5>
-                  <p className="card-text text-muted">Meditation and mindfulness made simple with guided sessions for every need.</p>
-                  <div className="mb-3">
-                    <span className="badge bg-success me-1">Meditation</span>
-                    <span className="badge bg-info">Sleep</span>
-                  </div>
-                  <p className="small text-muted mb-0">⭐️ 4.8/5 • Free + Premium</p>
-                </div>
-              </div>
-            </div>
-            <div className="col-lg-4 mb-4">
-              <div className="card h-100 shadow border-0">
-                <div className="card-body">
-                  <div className="fs-1 mb-3">🌙</div>
-                  <h5 className="card-title fw-bold">Calm</h5>
-                  <p className="card-text text-muted">Sleep stories, meditation, and relaxation techniques for better rest.</p>
-                  <div className="mb-3">
-                    <span className="badge bg-primary me-1">Sleep</span>
-                    <span className="badge bg-success">Relaxation</span>
-                  </div>
-                  <p className="small text-muted mb-0">⭐️ 4.7/5 • Free + Premium</p>
-                </div>
-              </div>
-            </div>
-            <div className="col-lg-4 mb-4">
-              <div className="card h-100 shadow border-0">
-                <div className="card-body">
-                  <div className="fs-1 mb-3">💬</div>
-                  <h5 className="card-title fw-bold">BetterHelp</h5>
-                  <p className="card-text text-muted">Connect with licensed therapists online for professional support.</p>
-                  <div className="mb-3">
-                    <span className="badge bg-danger me-1">Therapy</span>
-                    <span className="badge bg-warning">Professional</span>
-                  </div>
-                  <p className="small text-muted mb-0">⭐️ 4.5/5 • Subscription</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Articles and Guides */}
           <h4 className="mb-4 fw-bold">📖 Essential Reading & Guides</h4>
           <div className="row mb-5">
@@ -491,11 +450,19 @@ function Resources() {
       <div className="card shadow border-0 mb-4" style={{background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"}}>
         <div className="card-body text-center p-5 text-white">
           <div className="fs-1 mb-3">💙</div>
-          <h4 className="fw-bold mb-3">Need Professional Support?</h4>
+          <h4 className="fw-bold mb-3">Need Professional Support in India?</h4>
           <p className="mb-4 fs-5">Talking to a licensed mental health professional can make a real difference in your journey.</p>
-          <a href="https://www.psychologytoday.com/us/therapists" target="_blank" rel="noopener noreferrer" className="btn btn-light btn-lg px-5">
-            Find a Therapist Near You
-          </a>
+          <div className="d-flex gap-3 justify-content-center flex-wrap">
+            <a href="https://www.practo.com/" target="_blank" rel="noopener noreferrer" className="btn btn-light btn-lg px-4">
+              <strong>Practo</strong> - Find Therapists
+            </a>
+            <a href="https://www.talktoangel.com/" target="_blank" rel="noopener noreferrer" className="btn btn-outline-light btn-lg px-4">
+              <strong>TalktoAngel</strong> - Online Therapy
+            </a>
+            <a href="https://www.amahahealth.com/" target="_blank" rel="noopener noreferrer" className="btn btn-outline-light btn-lg px-4">
+              <strong>Amaha</strong> - Mental Wellness
+            </a>
+          </div>
         </div>
       </div>
     </div>

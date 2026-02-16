@@ -142,13 +142,16 @@ function Chatbot() {
 
       {crisisDetected && (
         <div className="alert alert-danger alert-dismissible fade show" role="alert">
-          <strong>🚨 Crisis Support Available</strong>
-          <p className="mb-1">If you're in crisis, please reach out for immediate help:</p>
-          <ul className="mb-0">
-            <li><strong>National Suicide Prevention Lifeline:</strong> 988</li>
-            <li><strong>Crisis Text Line:</strong> Text HOME to 741741</li>
-            <li><strong>Emergency Services:</strong> Call 911</li>
+          <strong>🚨 Crisis Support Available (India 🇮🇳)</strong>
+          <p className="mb-2">If you're in crisis, please reach out for immediate help:</p>
+          <ul className="mb-2">
+            <li><strong>AASRA (24x7):</strong> <a href="tel:+919820466726" className="text-danger">+91 9820466726</a></li>
+            <li><strong>Vandrevala Foundation:</strong> <span className="text-danger">1860 2662 345</span> / <span className="text-danger">1800 2333 330</span></li>
+            <li><strong>iCall Psychosocial Helpline:</strong> <a href="tel:+919152987821" className="text-danger">+91 9152987821</a></li>
+            <li><strong>NIMHANS Crisis Helpline:</strong> <span className="text-danger">080-46110007</span></li>
+            <li><strong>Emergency Services:</strong> Call <span className="text-danger">112</span></li>
           </ul>
+          <p className="mb-0 small"><em>You're not alone. Professional help is available 24/7.</em></p>
           <button 
             type="button" 
             className="btn-close" 
