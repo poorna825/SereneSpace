@@ -8,16 +8,7 @@ import EmergencySupport from './EmergencySupport';
 import Login from './Login';
 import Register from './Register';
 import Appointments from './Appointments';
-import { FaUserFriends, FaBookOpen, FaRobot } from "react-icons/fa";
-
-// Scroll to top on route change
-function ScrollToTop() {
-  const location = useLocation();
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [location]);
-  return null;
-}
+import AdminDashboard from './AdminDashboard';
 
 const features = [
   {
@@ -196,6 +187,9 @@ function App() {
                 {user && (
                   <li className="nav-item"><Link className="nav-link" to="/appointments">Appointments</Link></li>
                 )}
+                {user && user.role === 'admin' && (
+                  <li className="nav-item"><Link className="nav-link text-warning" to="/admin">Admin Dashboard</Link></li>
+                )}
                 {!user && (
                   <>
                     <li className="nav-item"><Link className="nav-link" to="/login">Login</Link></li>
@@ -227,6 +221,7 @@ function App() {
           <Route path="/peerhub" element={<PeerHub />} />
           <Route path="/chat" element={<Chatbot />} />
           <Route path="/appointments" element={<Appointments />} />
+          <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/login" element={<Login onLogin={handleLogin} />} />
           <Route path="/register" element={<Register onRegister={handleRegister} />} />
         </Routes>
