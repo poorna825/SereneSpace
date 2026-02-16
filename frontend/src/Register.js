@@ -94,6 +94,7 @@ export default function Register({ onRegister }) {
                   <select className="form-select form-select-lg" value={role} onChange={e => setRole(e.target.value)}>
                     <option value="user">User</option>
                     <option value="counselor">Counselor</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </div>
                 {error && <div className="alert alert-danger">{error}</div>}
