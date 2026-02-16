@@ -7,6 +7,7 @@ import PeerHub from "./PeerHub";
 import EmergencySupport from './EmergencySupport';
 import Login from './Login';
 import Register from './Register';
+import Appointments from './Appointments';
 import { FaUserFriends, FaBookOpen, FaRobot } from "react-icons/fa";
 
 // Scroll to top on route change
@@ -192,6 +193,9 @@ function App() {
                 <li className="nav-item"><Link className="nav-link" to="/resources">Resources</Link></li>
                 <li className="nav-item"><Link className="nav-link" to="/peerhub">Peer Hub</Link></li>
                 <li className="nav-item"><Link className="nav-link" to="/chat">Chatbot</Link></li>
+                {user && (
+                  <li className="nav-item"><Link className="nav-link" to="/appointments">Appointments</Link></li>
+                )}
                 {!user && (
                   <>
                     <li className="nav-item"><Link className="nav-link" to="/login">Login</Link></li>
@@ -222,6 +226,7 @@ function App() {
           <Route path="/resources" element={<Resources />} />
           <Route path="/peerhub" element={<PeerHub />} />
           <Route path="/chat" element={<Chatbot />} />
+          <Route path="/appointments" element={<Appointments />} />
           <Route path="/login" element={<Login onLogin={handleLogin} />} />
           <Route path="/register" element={<Register onRegister={handleRegister} />} />
         </Routes>
