@@ -1258,6 +1258,44 @@ app.post('/api/posts/:id/flag', authenticateJWT, async (req, res) => {
   }
 });
 
+// Unflag a post (admin only)
+app.patch('/api/posts/:id/unflag', authenticateJWT, requireRole('admin'), async (req, res) => {
+  try {
+    const postId = Number(req.params.id);
+    const post = await prisma.post.findUnique({ where: { id: postId } });
+    
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    
+    const updated = await prisma.post.update({
+      where: { id: postId },
+      data: { flagged: false }
+    });
+    
+    res.json({ post: updated, message: 'Post unflagged successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to unflag post', details: err.message });
+  }
+});
+
+// Get all flagged posts (admin only)
+app.get('/api/posts/flagged', authenticateJWT, requireRole('admin'), async (req, res) => {
+  try {
+    const posts = await prisma.post.findMany({
+      where: { flagged: true },
+      include: {
+        author: {
+          select: { id: true, username: true, email: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    res.json({ posts });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch flagged posts', details: err.message });
+  }
+});
+
 // Add comment to post
 app.post('/api/posts/:id/comments', authenticateJWT, async (req, res) => {
   const { content } = req.body;
@@ -1444,6 +1482,57 @@ app.post('/api/comments/:id/flag', authenticateJWT, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to flag comment', details: err.message });
+  }
+});
+
+// Unflag a comment (admin only)
+app.patch('/api/comments/:id/unflag', authenticateJWT, requireRole('admin'), async (req, res) => {
+  try {
+    const commentId = Number(req.params.id);
+    const comment = await prisma.comment.findUnique({ where: { id: commentId } });
+    
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+    
+    // Clear flags and reset flag status
+    await prisma.commentFlag.deleteMany({
+      where: { commentId }
+    });
+    
+    const updated = await prisma.comment.update({
+      where: { id: commentId },
+      data: { 
+        flagged: false,
+        flagCount: 0
+      }
+    });
+    
+    res.json({ comment: updated, message: 'Comment unflagged successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to unflag comment', details: err.message });
+  }
+});
+
+// Get all flagged comments (admin only)
+app.get('/api/comments/flagged', authenticateJWT, requireRole('admin'), async (req, res) => {
+  try {
+    const comments = await prisma.comment.findMany({
+      where: { 
+        flagged: true,
+        deleted: false
+      },
+      include: {
+        author: {
+          select: { id: true, username: true, email: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    res.json({ comments });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch flagged comments', details: err.message });
   }
 });
 
@@ -1784,6 +1873,27 @@ app.delete('/api/resources/:id', authenticateJWT, requireRole('admin'), async (r
     res.json({ message: 'Resource deleted' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete resource', details: err.message });
+  }
+});
+
+// Get all users (admin only)
+app.get('/api/admin/users', authenticateJWT, requireRole('admin'), async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        fullName: true,
+        role: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    res.json({ users });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch users', details: err.message });
   }
 });
 
