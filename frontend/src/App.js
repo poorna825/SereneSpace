@@ -8,8 +8,16 @@ import EmergencySupport from './EmergencySupport';
 import Login from './Login';
 import Register from './Register';
 import Appointments from './Appointments';
-import AdminDashboard from './AdminDashboard';
+import AdminDashboard from './AdminDashboard';import { FaUserFriends, FaBookOpen, FaRobot } from "react-icons/fa";
 
+// Scroll to top on route change
+function ScrollToTop() {
+  const location = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+  return null;
+}
 const features = [
   {
     icon: <FaUserFriends size={48} className="text-primary mb-3"/>,
