@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
@@ -5,30 +6,25 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import fetch from 'node-fetch';
 import Sentiment from 'sentiment';
-import { HfInference } from '@huggingface/inference';
+import OpenAI from 'openai';
 
 const app = express();
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 const sentiment = new Sentiment();
 
-// Initialize HuggingFace Inference API
-const HF_API_KEY = process.env.HF_API_KEY || 'your_huggingface_api_key';
-const hf = new HfInference(HF_API_KEY, {
-  baseUrl: 'https://router.huggingface.co',
-  defaultOptions: {
-    retry: { maxRetries: 2 },
-    timeout: 30000  // 30 seconds timeout
-  }
+// Initialize OpenAI API
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'your_openai_api_key';
+const openai = new OpenAI({
+  apiKey: OPENAI_API_KEY,
 });
 
 // AI Model Configuration
-// Try these models for text generation:
-// - 'google/flan-t5-base' (recommended: fast, instruction-following)
-// - 'microsoft/DialoGPT-medium' (conversational)
-// - 'meta-llama/Llama-2-7b-chat-hf' (powerful, needs Pro)
-// - 'HuggingFaceH4/zephyr-7b-beta' (empathetic, needs Pro)
-const TEXT_GENERATION_MODEL = process.env.TEXT_GEN_MODEL || 'google/flan-t5-base';
+// OpenAI Models:
+// - 'gpt-3.5-turbo' (recommended: fast, affordable, high quality)
+// - 'gpt-4' (most powerful, more expensive)
+// - 'gpt-4-turbo-preview' (faster GPT-4, lower cost)
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
 
 // Crisis keywords for detection
 const CRISIS_KEYWORDS = [
@@ -332,23 +328,36 @@ app.post('/api/chatbot/emotion', optionalAuthenticateJWT, async (req, res) => {
   let botReply = 'I understand. Can you tell me more about what you\'re feeling?';
   
   try {
-    // Step 1: Run sentiment/emotion analysis using HuggingFace
+    // Step 1: Run emotion analysis using OpenAI
     try {
-      console.log('🔍 Attempting HuggingFace emotion analysis...');
+      console.log('🔍 Attempting OpenAI emotion analysis...');
       
-      const emotionResult = await hf.textClassification({
-        model: 'j-hartmann/emotion-english-distilroberta-base',
-        inputs: message,
-        options: {
-          wait_for_model: true,  // Wait for model to load if needed
-          use_cache: true
-        }
+      const emotionPrompt = `Analyze the emotion in this message and respond with ONLY ONE WORD from this list: anger, disgust, fear, joy, sadness, surprise, neutral.
+
+Message: "${message}"
+
+Emotion:`;
+      
+      const emotionResponse = await openai.chat.completions.create({
+        model: OPENAI_MODEL,
+        messages: [
+          { role: 'system', content: 'You are an emotion detection system. Respond with only one word: anger, disgust, fear, joy, sadness, surprise, or neutral.' },
+          { role: 'user', content: emotionPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 10
       });
       
-      // Get the top emotion
-      if (emotionResult && emotionResult.length > 0) {
-        detectedEmotion = emotionResult[0].label.toLowerCase();
-        console.log(`✅ HuggingFace detected emotion: ${detectedEmotion}`);
+      // Get the detected emotion
+      const rawEmotion = emotionResponse.choices[0]?.message?.content?.trim().toLowerCase();
+      const validEmotions = ['anger', 'disgust', 'fear', 'joy', 'sadness', 'surprise', 'neutral'];
+      
+      if (rawEmotion && validEmotions.includes(rawEmotion)) {
+        detectedEmotion = rawEmotion;
+        console.log(`✅ OpenAI detected emotion: ${detectedEmotion}`);
+      } else {
+        console.log(`⚠️ Invalid emotion response: ${rawEmotion}, defaulting to neutral`);
+        detectedEmotion = 'neutral';
       }
     } catch (emotionError) {
       console.error('❌ Emotion analysis failed:', emotionError.message);
@@ -406,51 +415,34 @@ app.post('/api/chatbot/emotion', optionalAuthenticateJWT, async (req, res) => {
     
     const emotionContext = emotionPrompts[detectedEmotion] || emotionPrompts.neutral;
     
-    // Step 3: Generate empathetic response using text generation model
-    const generationPrompt = `You are an empathetic mental health support chatbot. The user is feeling ${detectedEmotion}.
-
-User: ${message}
-Therapist:`;
-
+    // Step 3: Generate empathetic response using OpenAI
     try {
-      // Try text generation with configured model
-      const generatedResponse = await hf.textGeneration({
-        model: TEXT_GENERATION_MODEL,
-        inputs: generationPrompt,
-        parameters: {
-          max_new_tokens: 80,
-          temperature: 0.8,
-          top_p: 0.95,
-          repetition_penalty: 1.2,
-          do_sample: true,
-          return_full_text: false
-        },
-        options: {
-          wait_for_model: false,
-          use_cache: false
-        }
+      console.log('💬 Generating empathetic response with OpenAI...');
+      
+      const chatResponse = await openai.chat.completions.create({
+        model: OPENAI_MODEL,
+        messages: [
+          { 
+            role: 'system', 
+            content: `You are SereneBot, a compassionate mental health support chatbot. The user is currently feeling ${detectedEmotion}. ${emotionContext} Keep responses brief (2-4 sentences), warm, and supportive. Focus on validation, empathy, and gentle guidance.`
+          },
+          { role: 'user', content: message }
+        ],
+        temperature: 0.8,
+        max_tokens: 150,
+        presence_penalty: 0.6,
+        frequency_penalty: 0.3
       });
       
-      // Extract and clean the generated response
-      if (generatedResponse && generatedResponse.generated_text) {
-        let cleanResponse = generatedResponse.generated_text.trim();
-        
-        // Remove common artifacts
-        cleanResponse = cleanResponse.replace(/^(Therapist:|Response:|Assistant:)/i, '').trim();
-        cleanResponse = cleanResponse.replace(/User:/gi, '').trim();
-        
-        // Only use if it's a reasonable length and quality
-        if (cleanResponse.length > 20 && cleanResponse.length < 500) {
-          botReply = cleanResponse;
-          console.log('✅ AI-generated response used');
-        } else {
-          throw new Error('Response quality check failed');
-        }
+      // Extract the response
+      if (chatResponse.choices[0]?.message?.content) {
+        botReply = chatResponse.choices[0].message.content.trim();
+        console.log('✅ AI-generated response used');
       } else {
-        throw new Error('No generated text returned');
+        throw new Error('No response content returned');
       }
     } catch (genError) {
-      console.error('Text generation failed:', genError.message);
+      console.error('❌ Text generation failed:', genError.message);
       // Fallback to emotion-specific pre-written responses
       botReply = generateEmotionResponse(detectedEmotion, message);
     }

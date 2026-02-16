@@ -9,8 +9,8 @@ SereneSpace is a full-stack web application that combines AI technology with men
 ## ✨ Key Features
 
 ### 🤖 AI-Powered Chatbot
-- Emotion detection using HuggingFace AI models
-- Context-aware responses for mental health support
+- Emotion detection using OpenAI GPT models
+- Context-aware responses with natural conversation flow
 - Crisis detection with immediate helpline recommendations
 - Personalized conversation history tracking
 
@@ -55,7 +55,7 @@ SereneSpace is a full-stack web application that combines AI technology with men
 - **Prisma 6.19.2**: ORM for database management
 - **SQLite**: Local database storage
 - **JWT & bcryptjs**: Authentication and password security
-- **HuggingFace Inference API**: AI-powered emotion detection and text generation
+- **OpenAI API**: AI-powered emotion detection and empathetic responses
 
 ## 📦 Installation
 
@@ -83,9 +83,18 @@ Create a `.env` file in `backend/express/`:
 ```env
 DATABASE_URL="file:./prisma/dev.db"
 JWT_SECRET="your-secure-jwt-secret-key"
-HUGGINGFACE_API_KEY="your-huggingface-api-key"
+OPENAI_API_KEY="your-openai-api-key"
+OPENAI_MODEL="gpt-3.5-turbo"
 PORT=4000
 ```
+
+**Get your OpenAI API key:**
+- Visit https://platform.openai.com/api-keys
+- Sign up/login to your OpenAI account
+- Click "Create new secret key"
+- Copy and paste it into your `.env` file
+- New accounts get $5 free credits (expires in 3 months)
+- Pricing: GPT-3.5-turbo costs ~$0.002 per 1K tokens
 
 4. **Initialize the database**
 ```bash
