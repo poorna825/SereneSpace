@@ -170,7 +170,7 @@ function App() {
 
   return (
     <Router>
-      <div>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         {/* Navbar */}
         <nav className="navbar navbar-expand-lg navbar-dark bg-dark shadow">
           <div className="container">
@@ -223,20 +223,22 @@ function App() {
         <ScrollToTop />
 
         {/* Routes */}
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/resources" element={<Resources />} />
-          <Route path="/peerhub" element={<PeerHub />} />
-          <Route path="/chat" element={<Chatbot />} />
-          <Route path="/appointments" element={<Appointments />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/login" element={<Login onLogin={handleLogin} />} />
-          <Route path="/register" element={<Register onRegister={handleRegister} />} />
-        </Routes>
+        <div style={{ flex: 1 }}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/resources" element={<Resources />} />
+            <Route path="/peerhub" element={<PeerHub />} />
+            <Route path="/chat" element={<Chatbot />} />
+            <Route path="/appointments" element={<Appointments />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/login" element={<Login onLogin={handleLogin} />} />
+            <Route path="/register" element={<Register onRegister={handleRegister} />} />
+          </Routes>
+        </div>
 
         {/* Footer */}
         <footer className="bg-dark text-white text-center py-3 mt-5 shadow">
-          <p className="mb-0 fs-6">© 2025 SereneSpace</p>
+          <p className="mb-0 fs-6">© 2026 SereneSpace</p>
         </footer>
       </div>
     </Router>
