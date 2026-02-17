@@ -381,7 +381,9 @@ export default function Appointments() {
                 <div className="card-body">
                   <div className="d-flex justify-content-between align-items-start mb-3">
                     <h5 className="card-title mb-0">
-                      {user?.role === 'counselor' 
+                      {user?.role === 'admin' 
+                        ? 'Appointment Details'
+                        : user?.role === 'counselor' 
                         ? `Patient: ${appointment.user?.username || 'Unknown'}`
                         : `Counselor: ${appointment.counselor?.username || 'Unknown'}`}
                     </h5>
@@ -389,6 +391,26 @@ export default function Appointments() {
                       {appointment.status}
                     </span>
                   </div>
+
+                  {/* Show full details for admins - both counselor and user */}
+                  {user?.role === 'admin' && (
+                    <div className="mb-3 small">
+                      {appointment.counselor && (
+                        <div className="mb-2">
+                          <div className="text-muted"><strong>Counselor:</strong></div>
+                          <div><strong>Name:</strong> {appointment.counselor.fullName || appointment.counselor.username}</div>
+                          <div><strong>Email:</strong> {appointment.counselor.email}</div>
+                        </div>
+                      )}
+                      {appointment.user && (
+                        <div className="mt-2">
+                          <div className="text-muted"><strong>Patient:</strong></div>
+                          <div><strong>Name:</strong> {appointment.user.fullName || appointment.user.username}</div>
+                          <div><strong>Email:</strong> {appointment.user.email}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Show full details for counselors */}
                   {user?.role === 'counselor' && appointment.user && (
@@ -476,7 +498,7 @@ export default function Appointments() {
                     )}
 
                     {/* User Actions */}
-                    {user?.role !== 'counselor' && (appointment.status === 'pending' || appointment.status === 'confirmed') && (
+                    {user?.role !== 'counselor' && user?.role !== 'admin' && (appointment.status === 'pending' || appointment.status === 'confirmed') && (
                       <>
                         <button 
                           className="btn btn-sm btn-outline-primary"
