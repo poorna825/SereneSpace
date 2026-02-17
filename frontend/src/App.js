@@ -46,6 +46,7 @@ const features = [
 function Home() {
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [autoplayFailed, setAutoplayFailed] = useState(false);
 
   useEffect(() => {
@@ -53,19 +54,42 @@ function Home() {
     const playAudio = async () => {
       if (audioRef.current) {
         try {
+          // First try: play with sound
           await audioRef.current.play();
           setIsPlaying(true);
+          setIsMuted(false);
           setAutoplayFailed(false);
         } catch (error) {
-          // Autoplay was prevented by browser
-          console.log('Autoplay prevented:', error);
-          setAutoplayFailed(true);
-          setIsPlaying(false);
+          // If autoplay with sound fails, try muted autoplay
+          console.log('Autoplay with sound prevented, trying muted:', error);
+          try {
+            audioRef.current.muted = true;
+            await audioRef.current.play();
+            setIsPlaying(true);
+            setIsMuted(true);
+            setAutoplayFailed(false);
+          } catch (mutedError) {
+            // Even muted autoplay failed
+            console.log('Muted autoplay also prevented:', mutedError);
+            setAutoplayFailed(true);
+            setIsPlaying(false);
+            setIsMuted(false);
+          }
         }
       }
     };
 
     playAudio();
+
+    // Add click listener to unmute on first user interaction
+    const handleFirstInteraction = () => {
+      if (audioRef.current && audioRef.current.muted && isPlaying) {
+        audioRef.current.muted = false;
+        setIsMuted(false);
+      }
+    };
+
+    document.addEventListener('click', handleFirstInteraction, { once: true });
 
     // Cleanup: stop audio when navigating away from Home
     return () => {
@@ -73,6 +97,7 @@ function Home() {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
       }
+      document.removeEventListener('click', handleFirstInteraction);
     };
   }, []);
 
@@ -82,6 +107,11 @@ function Home() {
         audioRef.current.pause();
         setIsPlaying(false);
       } else {
+        // Unmute if it was muted
+        if (audioRef.current.muted) {
+          audioRef.current.muted = false;
+          setIsMuted(false);
+        }
         audioRef.current.play()
           .then(() => {
             setIsPlaying(true);
@@ -144,7 +174,7 @@ function Home() {
           {isPlaying ? (
             <>
               <FaPause size={18} />
-              <span>Pause Music</span>
+              <span>{isMuted ? 'Unmute Music' : 'Pause Music'}</span>
             </>
           ) : (
             <>
@@ -153,6 +183,22 @@ function Home() {
             </>
           )}
         </button>
+        
+        {isMuted && isPlaying && (
+          <div 
+            className="alert alert-warning mt-2 shadow-sm"
+            style={{
+              fontSize: '12px',
+              padding: '8px 12px',
+              marginBottom: 0,
+              borderRadius: '20px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <FaMusic className="me-1" />
+            Music muted - click to unmute
+          </div>
+        )}
         
         {autoplayFailed && !isPlaying && (
           <div 
