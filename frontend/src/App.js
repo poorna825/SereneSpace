@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import Chatbot from "./Chatbot";  
+import Chatbot from "./Chatbot";  
 import Resources from "./Resources";
 import PeerHub from "./PeerHub";
 import EmergencySupport from './EmergencySupport';
 import Login from './Login';
 import Register from './Register';
 import Appointments from './Appointments';
-import AdminDashboard from './AdminDashboard';import { FaUserFriends, FaBookOpen, FaRobot } from "react-icons/fa";
+import AdminDashboard from './AdminDashboard';
+import { FaUserFriends, FaBookOpen, FaRobot, FaMusic, FaPause, FaPlay } from "react-icons/fa";
 
 // Scroll to top on route change
 function ScrollToTop() {
@@ -43,8 +44,133 @@ const features = [
 ];
 
 function Home() {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [autoplayFailed, setAutoplayFailed] = useState(false);
+
+  useEffect(() => {
+    // Attempt to autoplay when component mounts
+    const playAudio = async () => {
+      if (audioRef.current) {
+        try {
+          await audioRef.current.play();
+          setIsPlaying(true);
+          setAutoplayFailed(false);
+        } catch (error) {
+          // Autoplay was prevented by browser
+          console.log('Autoplay prevented:', error);
+          setAutoplayFailed(true);
+          setIsPlaying(false);
+        }
+      }
+    };
+
+    playAudio();
+
+    // Cleanup: stop audio when navigating away from Home
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    };
+  }, []);
+
+  const toggleAudio = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        audioRef.current.play()
+          .then(() => {
+            setIsPlaying(true);
+            setAutoplayFailed(false);
+          })
+          .catch(error => {
+            console.error('Playback failed:', error);
+            setAutoplayFailed(true);
+          });
+      }
+    }
+  };
+
   return (
     <>
+      {/* Background Audio */}
+      <audio 
+        ref={audioRef} 
+        loop 
+        preload="auto"
+        style={{display: 'none'}}
+      >
+        <source src="/soothing.mp3" type="audio/mpeg" />
+        Your browser does not support the audio element.
+      </audio>
+
+      {/* Audio Control Button */}
+      <div 
+        style={{
+          position: 'fixed',
+          bottom: '30px',
+          right: '30px',
+          zIndex: 1000
+        }}
+      >
+        <button
+          onClick={toggleAudio}
+          className="btn btn-lg shadow-lg"
+          style={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            borderRadius: '50px',
+            border: 'none',
+            padding: '12px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: 'all 0.3s ease',
+            fontSize: '16px'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.05)';
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(102, 126, 234, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.boxShadow = '';
+          }}
+        >
+          {isPlaying ? (
+            <>
+              <FaPause size={18} />
+              <span>Pause Music</span>
+            </>
+          ) : (
+            <>
+              <FaPlay size={18} />
+              <span>Play Music</span>
+            </>
+          )}
+        </button>
+        
+        {autoplayFailed && !isPlaying && (
+          <div 
+            className="alert alert-info mt-2 shadow-sm"
+            style={{
+              fontSize: '12px',
+              padding: '8px 12px',
+              marginBottom: 0,
+              borderRadius: '20px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <FaMusic className="me-1" />
+            Click to play calming music
+          </div>
+        )}
+      </div>
+
       {/* Hero Section */}
       <header className="py-5 text-center text-white" style={{background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", minHeight: "400px", display: "flex", alignItems: "center"}}>
         <div className="container">
