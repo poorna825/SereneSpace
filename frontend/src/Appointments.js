@@ -257,10 +257,14 @@ export default function Appointments() {
       <div className="row mb-4">
         <div className="col">
           <h1 className="fw-bold">
-            {user?.role === 'counselor' ? 'My Patient Appointments' : 'My Appointments'}
+            {user?.role === 'counselor' 
+              ? 'My Patient Appointments' 
+              : user?.role === 'admin' 
+              ? 'All System Appointments' 
+              : 'My Appointments'}
           </h1>
         </div>
-        {user?.role !== 'counselor' && (
+        {user?.role !== 'counselor' && user?.role !== 'admin' && (
           <div className="col-auto">
             <button 
               className="btn btn-primary" 
