@@ -11,13 +11,52 @@ function Chatbot() {
   const [anonymous, setAnonymous] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [crisisDetected, setCrisisDetected] = useState(false);
+  const [showCrisisCard, setShowCrisisCard] = useState(false);
   const [error, setError] = useState(null);
   
   // Ref to chat div for auto-scroll
   const chatEndRef = useRef(null);
+  const crisisBoxRef = useRef(null);
+  const crisisCardRef = useRef(null);
 
   // Crisis keywords to check in bot responses
   const crisisKeywords = ['emergency', 'hotline', 'help immediately', 'crisis', 'suicide', 'self-harm'];
+
+  // Helper function to parse crisis helpline from bot message
+  const parseCrisisHelpline = (message) => {
+    // Check if message contains India Crisis Helplines
+    if (message.includes('India Crisis Helplines') || message.includes('🇮🇳')) {
+      // Extract the helpline section
+      const lines = message.split('\n');
+      const helplineLines = [];
+      let inHelplineSection = false;
+      
+      for (const line of lines) {
+        if (line.includes('India Crisis Helplines') || line.includes('🇮🇳')) {
+          inHelplineSection = true;
+        }
+        if (inHelplineSection && line.trim()) {
+          helplineLines.push(line.trim());
+        }
+      }
+      
+      return helplineLines.length > 0 ? helplineLines : null;
+    }
+    return null;
+  };
+
+  // Helper function to separate message text from helplines
+  const separateMessageAndHelplines = (message) => {
+    const helplines = parseCrisisHelpline(message);
+    if (helplines) {
+      // Find where helplines start and split
+      const helplineStart = message.indexOf(helplines[0]);
+      const mainMessage = message.substring(0, helplineStart).trim();
+      const helplineText = message.substring(helplineStart).trim();
+      return { mainMessage, helplineText, hasHelplines: true };
+    }
+    return { mainMessage: message, helplineText: null, hasHelplines: false };
+  };
 
   // Format timestamp
   const formatTime = (timestamp) => {
@@ -81,8 +120,12 @@ function Chatbot() {
           data.reply.toLowerCase().includes(keyword)
         );
         
-        if (containsCrisisKeyword) {
+        // Check if message contains India helplines
+        const hasHelplines = data.reply.includes('India Crisis Helplines') || data.reply.includes('🇮🇳');
+        
+        if (containsCrisisKeyword || hasHelplines) {
           setCrisisDetected(true);
+          setShowCrisisCard(true);
         }
       } else {
         setError(data.error || "Failed to get response from bot");
@@ -107,8 +150,25 @@ function Chatbot() {
 
   // Auto-scroll effect whenever messages change
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+    // If crisis card is shown, scroll to it first
+    if (showCrisisCard && crisisCardRef.current) {
+      setTimeout(() => {
+        crisisCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 200);
+    } else {
+      // Otherwise scroll to bottom
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isTyping, showCrisisCard]);
+
+  // Auto-scroll to crisis box within message when it appears
+  useEffect(() => {
+    if (crisisBoxRef.current) {
+      setTimeout(() => {
+        crisisBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }, [messages]);
 
   // Handle Enter key press
   const handleKeyPress = (e) => {
@@ -140,31 +200,6 @@ function Chatbot() {
             AI-powered emotional support and mental wellness companion
           </p>
         </div>
-
-      {/* Crisis Alert */}
-      {crisisDetected && (
-        <div className="alert alert-danger alert-dismissible fade show shadow-sm mb-4" role="alert" style={{ 
-          borderLeft: '4px solid #dc3545',
-          animation: 'slideIn 0.3s ease-out'
-        }}>
-          <strong>🚨 Crisis Support Available (India 🇮🇳)</strong>
-          <p className="mb-2 mt-2">If you're in crisis, please reach out for immediate help:</p>
-          <ul className="mb-2" style={{ fontSize: '0.9rem' }}>
-            <li><strong>AASRA (24x7):</strong> <a href="tel:+919820466726" className="text-danger fw-bold">+91 9820466726</a></li>
-            <li><strong>Vandrevala Foundation:</strong> <span className="text-danger fw-bold">1860 2662 345</span> / <span className="text-danger fw-bold">1800 2333 330</span></li>
-            <li><strong>iCall Psychosocial Helpline:</strong> <a href="tel:+919152987821" className="text-danger fw-bold">+91 9152987821</a></li>
-            <li><strong>NIMHANS Crisis Helpline:</strong> <span className="text-danger fw-bold">080-46110007</span></li>
-            <li><strong>Emergency Services:</strong> Call <span className="text-danger fw-bold">112</span></li>
-          </ul>
-          <p className="mb-0 small fst-italic">You're not alone. Professional help is available 24/7.</p>
-          <button 
-            type="button" 
-            className="btn-close" 
-            onClick={() => setCrisisDetected(false)}
-            aria-label="Close"
-          ></button>
-        </div>
-      )}
 
       {/* Error Alert */}
       {error && (
@@ -226,7 +261,85 @@ function Chatbot() {
             background: 'linear-gradient(to bottom, #f8f9fa 0%, #e9ecef 100%)'
           }}
         >
-          {messages.map((msg, index) => (
+          {/* Crisis Helpline Card at Top */}
+          {showCrisisCard && (
+            <div 
+              ref={crisisCardRef}
+              className="mb-4 shadow-lg"
+              style={{
+                backgroundColor: '#dc3545',
+                color: '#ffffff',
+                borderRadius: '16px',
+                border: '4px solid #b02a37',
+                padding: '20px',
+                animation: 'pulseRed 2s infinite, slideDown 0.5s ease-out',
+                position: 'relative'
+              }}
+            >
+              <button
+                onClick={() => setShowCrisisCard(false)}
+                style={{
+                  position: 'absolute',
+                  top: '10px',
+                  right: '10px',
+                  background: 'rgba(255, 255, 255, 0.3)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '30px',
+                  height: '30px',
+                  color: '#ffffff',
+                  fontSize: '1.2rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold'
+                }}
+                aria-label="Close crisis card"
+              >
+                ×
+              </button>
+              <div className="d-flex align-items-center mb-3">
+                <span style={{ fontSize: '2rem', marginRight: '12px' }}>🚨</span>
+                <strong style={{ fontSize: '1.3rem' }}>CRISIS HELPLINES - IMMEDIATE SUPPORT</strong>
+              </div>
+              <p className="mb-3" style={{ fontSize: '1rem', lineHeight: '1.6' }}>
+                If you're in crisis or need immediate support, please reach out now. You're not alone.
+              </p>
+              <div style={{ 
+                backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                borderRadius: '12px',
+                padding: '15px',
+                fontSize: '0.95rem',
+                lineHeight: '1.9'
+              }}>
+                <div><strong>🇮🇳 India Crisis Helplines:</strong></div>
+                <div className="mt-2">
+                  • <strong>AASRA (24/7):</strong> <a href="tel:+919820466726" style={{ color: '#ffffff', textDecoration: 'underline' }}>+91 9820466726</a>
+                </div>
+                <div>
+                  • <strong>Vandrevala Foundation:</strong> 1860 2662 345
+                </div>
+                <div>
+                  • <strong>iCall:</strong> <a href="tel:+919152987821" style={{ color: '#ffffff', textDecoration: 'underline' }}>+91 9152987821</a>
+                </div>
+                <div>
+                  • <strong>NIMHANS:</strong> 080-46110007
+                </div>
+                <div>
+                  • <strong>Emergency:</strong> 112
+                </div>
+              </div>
+              <p className="mt-3 mb-0 small fst-italic">
+                📞 These numbers are available 24/7. A trained professional can help you through this.
+              </p>
+            </div>
+          )}
+          
+          {messages.map((msg, index) => {
+            const { mainMessage, helplineText, hasHelplines } = separateMessageAndHelplines(msg.text);
+            
+            return (
             <div 
               key={index} 
               className={`d-flex mb-3 ${msg.sender === "user" ? "justify-content-end" : "justify-content-start"}`}
@@ -272,7 +385,35 @@ function Chatbot() {
                     border: msg.sender === "bot" ? '1px solid #e0e0e0' : 'none'
                   }}
                 >
-                  {msg.text}
+                  {mainMessage}
+                  
+                  {/* Crisis Helpline Red Box */}
+                  {hasHelplines && msg.sender === "bot" && (
+                    <div 
+                      ref={crisisBoxRef}
+                      className="mt-3 p-3 shadow"
+                      style={{
+                        backgroundColor: '#dc3545',
+                        color: '#ffffff',
+                        borderRadius: '12px',
+                        border: '3px solid #b02a37',
+                        animation: 'pulseRed 2s infinite',
+                        fontWeight: '500'
+                      }}
+                    >
+                      <div className="d-flex align-items-center mb-2">
+                        <span style={{ fontSize: '1.5rem', marginRight: '8px' }}>🚨</span>
+                        <strong style={{ fontSize: '1.1rem' }}>CRISIS HELPLINES</strong>
+                      </div>
+                      <div style={{ 
+                        whiteSpace: 'pre-line',
+                        fontSize: '0.9rem',
+                        lineHeight: '1.8'
+                      }}>
+                        {helplineText}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div 
                   className={`mt-1 ${msg.sender === "user" ? "text-end" : "text-start"}`}
@@ -304,7 +445,7 @@ function Chatbot() {
                 </div>
               )}
             </div>
-          ))}
+          )})}
           
           {/* Typing Indicator */}
           {isTyping && (
@@ -444,6 +585,26 @@ function Chatbot() {
           to {
             opacity: 1;
             transform: translateX(0);
+          }
+        }
+
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes pulseRed {
+          0%, 100% {
+            box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+          }
+          50% {
+            box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
           }
         }
 
