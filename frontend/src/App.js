@@ -46,46 +46,38 @@ const features = [
 function Home() {
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [autoplayFailed, setAutoplayFailed] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
 
   useEffect(() => {
-    // Attempt to autoplay when component mounts
-    const playAudio = async () => {
-      if (audioRef.current) {
-        try {
-          // First try: play with sound
-          await audioRef.current.play();
-          setIsPlaying(true);
-          setIsMuted(false);
-          setAutoplayFailed(false);
-        } catch (error) {
-          // If autoplay with sound fails, try muted autoplay
-          console.log('Autoplay with sound prevented, trying muted:', error);
-          try {
-            audioRef.current.muted = true;
-            await audioRef.current.play();
-            setIsPlaying(true);
-            setIsMuted(true);
-            setAutoplayFailed(false);
-          } catch (mutedError) {
-            // Even muted autoplay failed
-            console.log('Muted autoplay also prevented:', mutedError);
-            setAutoplayFailed(true);
-            setIsPlaying(false);
-            setIsMuted(false);
-          }
-        }
-      }
+    // Monitor when audio actually starts playing
+    const handlePlay = () => {
+      setIsPlaying(true);
     };
 
-    playAudio();
+    const handlePause = () => {
+      setIsPlaying(false);
+    };
+
+    const currentAudio = audioRef.current;
+    if (currentAudio) {
+      currentAudio.addEventListener('play', handlePlay);
+      currentAudio.addEventListener('pause', handlePause);
+
+      // Check if autoplay worked
+      if (!currentAudio.paused) {
+        setIsPlaying(true);
+      }
+    }
 
     // Add click listener to unmute on first user interaction
     const handleFirstInteraction = () => {
-      if (audioRef.current && audioRef.current.muted && isPlaying) {
+      if (audioRef.current && audioRef.current.muted) {
         audioRef.current.muted = false;
         setIsMuted(false);
+        // Ensure it's playing
+        if (audioRef.current.paused) {
+          audioRef.current.play().catch(err => console.log('Play failed:', err));
+        }
       }
     };
 
@@ -93,9 +85,11 @@ function Home() {
 
     // Cleanup: stop audio when navigating away from Home
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
+      if (currentAudio) {
+        currentAudio.removeEventListener('play', handlePlay);
+        currentAudio.removeEventListener('pause', handlePause);
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
       }
       document.removeEventListener('click', handleFirstInteraction);
     };
@@ -115,11 +109,9 @@ function Home() {
         audioRef.current.play()
           .then(() => {
             setIsPlaying(true);
-            setAutoplayFailed(false);
           })
           .catch(error => {
             console.error('Playback failed:', error);
-            setAutoplayFailed(true);
           });
       }
     }
@@ -131,6 +123,8 @@ function Home() {
       <audio 
         ref={audioRef} 
         loop 
+        autoPlay
+        muted
         preload="auto"
         style={{display: 'none'}}
       >
@@ -197,22 +191,6 @@ function Home() {
           >
             <FaMusic className="me-1" />
             Music muted - click to unmute
-          </div>
-        )}
-        
-        {autoplayFailed && !isPlaying && (
-          <div 
-            className="alert alert-info mt-2 shadow-sm"
-            style={{
-              fontSize: '12px',
-              padding: '8px 12px',
-              marginBottom: 0,
-              borderRadius: '20px',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            <FaMusic className="me-1" />
-            Click to play calming music
           </div>
         )}
       </div>
