@@ -1,43 +1,213 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import 'bootstrap/dist/css/bootstrap.min.css';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import Chatbot from "./Chatbot";  
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import Chatbot from "./Chatbot";  
 import Resources from "./Resources";
 import PeerHub from "./PeerHub";
 import EmergencySupport from './EmergencySupport';
-import { FaUserFriends, FaBookOpen, FaRobot } from "react-icons/fa";
+import Login from './Login';
+import Register from './Register';
+import Appointments from './Appointments';
+import AdminDashboard from './AdminDashboard';
+import { FaUserFriends, FaBookOpen, FaRobot, FaMusic, FaPause, FaPlay } from "react-icons/fa";
 
+// Scroll to top on route change
+function ScrollToTop() {
+  const location = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+  return null;
+}
 const features = [
   {
     icon: <FaUserFriends size={48} className="text-primary mb-3"/>,
     title: "Peer Hub",
-    description: "Connect with others and share your experiences.",
-    image: "https://cdn.pixabay.com/photo/2017/06/27/11/48/team-spirit-2447163_1280.jpg"
+    description: "Connect with a supportive community. Share experiences, exchange coping strategies, and find comfort in knowing you're not alone.",
+    image: "https://cdn.pixabay.com/photo/2017/06/27/11/48/team-spirit-2447163_1280.jpg",
+    link: "/peerhub"
   },
   {
     icon: <FaBookOpen size={48} className="text-success mb-3"/>,
     title: "Resources",
-    description: "Access psychoeducational material to improve wellbeing.",
-    image: "https://cdn.pixabay.com/photo/2016/02/16/21/07/christmas-background-1204029_1280.jpg"
-    
+    description: "Access evidence-based articles, coping techniques, and mental health education to empower your wellness journey.",
+    image: "https://cdn.pixabay.com/photo/2016/02/16/21/07/christmas-background-1204029_1280.jpg",
+    link: "/resources"
   },
   {
     icon: <FaRobot size={48} className="text-info mb-3"/>,
-    title: "Chatbot",
-    description: "Talk to our AI-powered mental health assistant.",
-    image: "https://cdn.pixabay.com/photo/2023/02/04/17/28/chat-7767694_1280.jpg"
+    title: "AI Chatbot",
+    description: "Chat with our emotion-aware AI assistant 24/7. Get instant support, guidance, and a listening ear whenever you need it.",
+    image: "https://cdn.pixabay.com/photo/2023/02/04/17/28/chat-7767694_1280.jpg",
+    link: "/chat"
   }
 ];
 
 function Home() {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+
+  useEffect(() => {
+    // Monitor when audio actually starts playing
+    const handlePlay = () => {
+      setIsPlaying(true);
+    };
+
+    const handlePause = () => {
+      setIsPlaying(false);
+    };
+
+    const currentAudio = audioRef.current;
+    if (currentAudio) {
+      currentAudio.addEventListener('play', handlePlay);
+      currentAudio.addEventListener('pause', handlePause);
+
+      // Check if autoplay worked
+      if (!currentAudio.paused) {
+        setIsPlaying(true);
+      }
+    }
+
+    // Add click listener to unmute on first user interaction
+    const handleFirstInteraction = () => {
+      if (audioRef.current && audioRef.current.muted) {
+        audioRef.current.muted = false;
+        setIsMuted(false);
+        // Ensure it's playing
+        if (audioRef.current.paused) {
+          audioRef.current.play().catch(err => console.log('Play failed:', err));
+        }
+      }
+    };
+
+    document.addEventListener('click', handleFirstInteraction, { once: true });
+
+    // Cleanup: stop audio when navigating away from Home
+    return () => {
+      if (currentAudio) {
+        currentAudio.removeEventListener('play', handlePlay);
+        currentAudio.removeEventListener('pause', handlePause);
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+      }
+      document.removeEventListener('click', handleFirstInteraction);
+    };
+  }, []);
+
+  const toggleAudio = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        // Unmute if it was muted
+        if (audioRef.current.muted) {
+          audioRef.current.muted = false;
+          setIsMuted(false);
+        }
+        audioRef.current.play()
+          .then(() => {
+            setIsPlaying(true);
+          })
+          .catch(error => {
+            console.error('Playback failed:', error);
+          });
+      }
+    }
+  };
+
   return (
     <>
+      {/* Background Audio */}
+      <audio 
+        ref={audioRef} 
+        loop 
+        autoPlay
+        muted
+        preload="auto"
+        style={{display: 'none'}}
+      >
+        <source src="/soothing.mp3" type="audio/mpeg" />
+        Your browser does not support the audio element.
+      </audio>
+
+      {/* Audio Control Button */}
+      <div 
+        style={{
+          position: 'fixed',
+          bottom: '30px',
+          right: '30px',
+          zIndex: 1000
+        }}
+      >
+        <button
+          onClick={toggleAudio}
+          className="btn btn-lg shadow-lg"
+          style={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            borderRadius: '50px',
+            border: 'none',
+            padding: '12px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: 'all 0.3s ease',
+            fontSize: '16px'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.05)';
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(102, 126, 234, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.boxShadow = '';
+          }}
+        >
+          {isPlaying ? (
+            <>
+              <FaPause size={18} />
+              <span>{isMuted ? 'Unmute Music' : 'Pause Music'}</span>
+            </>
+          ) : (
+            <>
+              <FaPlay size={18} />
+              <span>Play Music</span>
+            </>
+          )}
+        </button>
+        
+        {isMuted && isPlaying && (
+          <div 
+            className="alert alert-warning mt-2 shadow-sm"
+            style={{
+              fontSize: '12px',
+              padding: '8px 12px',
+              marginBottom: 0,
+              borderRadius: '20px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <FaMusic className="me-1" />
+            Music muted - click to unmute
+          </div>
+        )}
+      </div>
+
       {/* Hero Section */}
-      <header className="py-5 text-center text-white" style={{background: "linear-gradient(45deg, #6a11cb, #2575fc)"}}>
+      <header className="py-5 text-center text-white" style={{background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", minHeight: "400px", display: "flex", alignItems: "center"}}>
         <div className="container">
-          <h1 className="display-4 fw-bold mb-3">Welcome to SereneSpace</h1>
-          <p className="lead mb-4">Your mental health companion, providing resources and support.</p>
-          <Link to="/chat" className="btn btn-lg btn-light shadow">Try the Chatbot</Link>
+          <h1 className="display-3 fw-bold mb-3">Your Mental Health Matters</h1>
+          <p className="lead mb-4 fs-4">A safe space for support, resources, and connection. You don't have to face mental health challenges alone.</p>
+          <div className="d-flex gap-3 justify-content-center flex-wrap">
+            <Link to="/chat" className="btn btn-lg btn-light shadow-lg px-4">
+              <FaRobot className="me-2" />Start Chatting
+            </Link>
+            <Link to="/resources" className="btn btn-lg btn-outline-light shadow-lg px-4">
+              <FaBookOpen className="me-2" />Explore Resources
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -46,21 +216,68 @@ function Home() {
         <EmergencySupport />
       </section>
 
+      {/* Mental Health Quiz Section */}
+      <section className="container my-5 py-4">
+        <div className="card border-0 shadow-lg" style={{background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"}}>
+          <div className="card-body text-center text-white py-5">
+            <h2 className="fw-bold mb-3">Take a Mental Health Self-Check</h2>
+            <p className="lead mb-4 mx-auto" style={{maxWidth: "700px"}}>
+              Understanding your mental health is an important step in your wellness journey. 
+              These brief, confidential quizzes can help you reflect on your current well-being. 
+              Remember, these are not medical diagnoses—just helpful tools for self-awareness.
+            </p>
+            <div className="d-flex gap-3 justify-content-center flex-wrap">
+              <a 
+                href="https://share.google/d2UzidJEuTX1TqMWJ" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="btn btn-lg btn-light shadow px-5 py-3 fw-bold"
+                style={{minWidth: "200px"}}
+              >
+                Mental Health Check
+              </a>
+              <a 
+                href="https://share.google/aYQ9G4JBkQdc5Zipd" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="btn btn-lg btn-light shadow px-5 py-3 fw-bold"
+                style={{minWidth: "200px"}}
+              >
+                Wellness Assessment
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
-      <section className="container my-5">
+      <section className="container my-5 py-4">
+        <h2 className="text-center mb-5 fw-bold">Explore Our Features</h2>
         <div className="row g-4">
-          {features.map(({icon, title, description, image}, i) => (
+          {features.map(({icon, title, description, image, link}, i) => (
             <div className="col-md-4" key={i}>
-              <div className="card border-0 shadow-sm h-100">
-                <img src={image} alt={title} className="card-img-top rounded-top" style={{height: '200px', objectFit: 'cover'}}/>
-                <div className="card-body text-center">
-                  {icon}
-                  <h3 className="card-title fw-bold">{title}</h3>
-                  <p className="card-text">{description}</p>
+              <Link to={link} className="text-decoration-none">
+                <div className="card border-0 shadow-sm h-100 hover-lift" style={{transition: "transform 0.3s", cursor: "pointer"}}>
+                  <img src={image} alt={title} className="card-img-top rounded-top" style={{height: '200px', objectFit: 'cover'}}/>
+                  <div className="card-body text-center">
+                    {icon}
+                    <h3 className="card-title fw-bold text-dark">{title}</h3>
+                    <p className="card-text text-muted">{description}</p>
+                    <span className="btn btn-outline-primary btn-sm mt-2">Learn More →</span>
+                  </div>
                 </div>
-              </div>
+              </Link>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Call to Action */}
+      <section className="bg-primary text-white py-5 my-5">
+        <div className="container text-center">
+          <h2 className="fw-bold mb-3">Ready to Start Your Wellness Journey?</h2>
+          <p className="lead mb-4">Join SereneSpace today and take the first step towards better mental health.</p>
+          <Link to="/register" className="btn btn-lg btn-light shadow px-5">Get Started Free</Link>
         </div>
       </section>
     </>
@@ -68,9 +285,42 @@ function Home() {
 }
 
 function App() {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    // Check if user is logged in
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch('http://localhost:4000/api/profile', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.user) setUser(data.user);
+        })
+        .catch(err => console.error('Error fetching profile:', err));
+    }
+  }, []);
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+    window.location.href = '/';
+  };
+
+  const handleRegister = (userData) => {
+    alert('Registration successful! Please login.');
+    window.location.href = '/login';
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setUser(null);
+    window.location.href = '/';
+  };
+
   return (
     <Router>
-      <div>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         {/* Navbar */}
         <nav className="navbar navbar-expand-lg navbar-dark bg-dark shadow">
           <div className="container">
@@ -92,22 +342,53 @@ function App() {
                 <li className="nav-item"><Link className="nav-link" to="/resources">Resources</Link></li>
                 <li className="nav-item"><Link className="nav-link" to="/peerhub">Peer Hub</Link></li>
                 <li className="nav-item"><Link className="nav-link" to="/chat">Chatbot</Link></li>
+                {user && (
+                  <li className="nav-item"><Link className="nav-link" to="/appointments">Appointments</Link></li>
+                )}
+                {user && user.role === 'admin' && (
+                  <li className="nav-item"><Link className="nav-link text-warning" to="/admin">Admin Dashboard</Link></li>
+                )}
+                {!user && (
+                  <>
+                    <li className="nav-item"><Link className="nav-link" to="/login">Login</Link></li>
+                    <li className="nav-item"><Link className="nav-link" to="/register">Register</Link></li>
+                  </>
+                )}
+                {user && (
+                  <>
+                    <li className="nav-item">
+                      <span className="nav-link text-info">{user.username || user.email} ({user.role})</span>
+                    </li>
+                    <li className="nav-item">
+                      <button className="nav-link btn btn-link" onClick={handleLogout}>Logout</button>
+                    </li>
+                  </>
+                )}
               </ul>
             </div>
           </div>
         </nav>
 
+        {/* Scroll to top on navigation */}
+        <ScrollToTop />
+
         {/* Routes */}
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/resources" element={<Resources />} />
-          <Route path="/peerhub" element={<PeerHub />} />
-          <Route path="/chat" element={<Chatbot />} />
-        </Routes>
+        <div style={{ flex: 1 }}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/resources" element={<Resources />} />
+            <Route path="/peerhub" element={<PeerHub />} />
+            <Route path="/chat" element={<Chatbot />} />
+            <Route path="/appointments" element={<Appointments />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/login" element={<Login onLogin={handleLogin} />} />
+            <Route path="/register" element={<Register onRegister={handleRegister} />} />
+          </Routes>
+        </div>
 
         {/* Footer */}
         <footer className="bg-dark text-white text-center py-3 mt-5 shadow">
-          <p className="mb-0 fs-6">© 2025 SereneSpace | Built with React + Bootstrap</p>
+          <p className="mb-0 fs-6">© 2026 SereneSpace</p>
         </footer>
       </div>
     </Router>

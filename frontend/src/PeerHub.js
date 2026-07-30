@@ -1,148 +1,326 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 function PeerHub() {
-  const [channels] = useState([
-    { id: 1, name: "general" },
-    { id: 2, name: "support" },
-    { id: 3, name: "random" },
-  ]);
+  const [posts, setPosts] = useState([]);
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [newPostTitle, setNewPostTitle] = useState("");
+  const [newPostContent, setNewPostContent] = useState("");
+  const [newComment, setNewComment] = useState("");
+  const [showCreatePost, setShowCreatePost] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [users] = useState([
-    { id: 1, name: "Aastha", online: true },
-    { id: 2, name: "Kirti", online: true },
-    { id: 3, name: "Shreya", online: false },
-    { id: 4, name: "You", online: true },
-  ]);
+  const token = localStorage.getItem('token');
 
-  const currentUser = { id: 4, name: "You" };
-  const [currentChannel, setCurrentChannel] = useState(channels[0]);
-  const [dmUser, setDmUser] = useState(null);
-  const [messages, setMessages] = useState([
-    // General channel messages
-    { channelId: 1, user: "Aastha", text: "Hey everyone! How’s your day going?" },
-    { channelId: 1, user: "You", text: "Hi Aastha! I'm feeling a bit stressed today." },
-    { channelId: 1, user: "Kirti", text: "Same here, had a tough morning 😅" },
-    { channelId: 1, user: "Shreya", text: "Anyone tried meditation today? It helps me calm down." },
-    { channelId: 1, user: "You", text: "Not yet, might give it a try. Thanks for the tip!" },
-
-    // Support channel messages
-    { channelId: 2, user: "SereneBot", text: "Remember to take deep breaths and stay hydrated 💧" },
-    { channelId: 2, user: "Aastha", text: "Feeling anxious before exams, any advice?" },
-    { channelId: 2, user: "You", text: "Try breaking your tasks into small steps. It helps!" },
-    { channelId: 2, user: "Kirti", text: "I’m here if anyone needs someone to talk to." },
-
-    // Random channel messages
-    { channelId: 3, user: "Shreya", text: "Check out this relaxing playlist I found 🎵" },
-    { channelId: 3, user: "You", text: "Just made a cup of herbal tea, so cozy!" },
-    { channelId: 3, user: "Aastha", text: "Haha I’m watching cute animal videos 🐶" },
-  ]);
-
-  const [input, setInput] = useState("");
-  const chatEndRef = useRef(null);
-
-  const handleSend = () => {
-    if (!input.trim()) return;
-    const now = new Date();
-    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    if (dmUser) {
-      setMessages(prev => [
-        ...prev,
-        { dmWith: dmUser.id, from: currentUser.name, to: dmUser.name, text: input, time }
-      ]);
-    } else {
-      setMessages(prev => [
-        ...prev,
-        { channelId: currentChannel.id, user: currentUser.name, text: input, time }
-      ]);
+  // Fetch all posts
+  const fetchPosts = async () => {
+    try {
+      const res = await fetch('http://localhost:4000/api/posts');
+      const data = await res.json();
+      setPosts(data.posts || []);
+    } catch (err) {
+      console.error('Error fetching posts:', err);
     }
+  };
 
-    setInput("");
+  // Fetch specific post with comments
+  const fetchPost = async (postId) => {
+    try {
+      const res = await fetch(`http://localhost:4000/api/posts/${postId}`);
+      const data = await res.json();
+      setSelectedPost(data.post);
+    } catch (err) {
+      console.error('Error fetching post:', err);
+    }
   };
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, currentChannel, dmUser]);
+    fetchPosts();
+  }, []);
 
-  const renderMessages = () => {
-    const filtered = dmUser
-      ? messages.filter(msg => (msg.dmWith === dmUser.id && (msg.from === currentUser.name || msg.to === currentUser.name)))
-      : messages.filter(msg => msg.channelId === currentChannel.id);
+  // Create new post
+  const handleCreatePost = async (e) => {
+    e.preventDefault();
+    if (!token) {
+      alert('Please login to create a post');
+      return;
+    }
 
-    return filtered.map((msg, idx) => {
-      const isSelf = msg.user === currentUser.name || msg.from === currentUser.name;
-      return (
-        <div key={idx} className={`d-flex mb-2 ${isSelf ? 'justify-content-end' : 'justify-content-start'}`}>
-          <div className={`p-2 rounded ${isSelf ? 'bg-primary text-white' : 'bg-secondary text-white'}`} style={{ maxWidth: "70%" }}>
-            <div><strong>{isSelf ? "You" : msg.user || msg.from}</strong></div>
-            <div>{msg.text}</div>
-            <div className="text-end" style={{ fontSize: "0.75rem", opacity: 0.8 }}>{msg.time}</div>
-          </div>
-        </div>
-      );
-    });
+    setLoading(true);
+    try {
+      const res = await fetch('http://localhost:4000/api/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ title: newPostTitle, content: newPostContent })
+      });
+
+      if (res.ok) {
+        setNewPostTitle("");
+        setNewPostContent("");
+        setShowCreatePost(false);
+        fetchPosts();
+      } else {
+        alert('Failed to create post');
+      }
+    } catch (err) {
+      console.error('Error creating post:', err);
+    }
+    setLoading(false);
+  };
+
+  // Like a post
+  const handleLikePost = async (postId) => {
+    if (!token) {
+      alert('Please login to like posts');
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/posts/${postId}/like`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        if (selectedPost && selectedPost.id === postId) {
+          fetchPost(postId);
+        }
+        fetchPosts();
+      }
+    } catch (err) {
+      console.error('Error liking post:', err);
+    }
+  };
+
+  // Flag a post
+  const handleFlagPost = async (postId) => {
+    if (!token) {
+      alert('Please login to flag posts');
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to flag this post for review?')) return;
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/posts/${postId}/flag`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        alert('Post flagged for review');
+        fetchPosts();
+        setSelectedPost(null);
+      }
+    } catch (err) {
+      console.error('Error flagging post:', err);
+    }
+  };
+
+  // Add comment to post
+  const handleAddComment = async (e) => {
+    e.preventDefault();
+    if (!token) {
+      alert('Please login to comment');
+      return;
+    }
+
+    if (!newComment.trim()) return;
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/posts/${selectedPost.id}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: newComment })
+      });
+
+      if (res.ok) {
+        setNewComment("");
+        fetchPost(selectedPost.id);
+      }
+    } catch (err) {
+      console.error('Error adding comment:', err);
+    }
+  };
+
+  // Like a comment
+  const handleLikeComment = async (commentId) => {
+    if (!token) {
+      alert('Please login to like comments');
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/comments/${commentId}/like`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.ok && selectedPost) {
+        fetchPost(selectedPost.id);
+      }
+    } catch (err) {
+      console.error('Error liking comment:', err);
+    }
   };
 
   return (
-    <div className="d-flex" style={{ height: "80vh", fontFamily: 'Arial, sans-serif' }}>
-      {/* Sidebar */}
-      <div className="bg-dark text-white p-3" style={{ width: "250px" }}>
-        <h5 className="mb-3">Channels</h5>
-        <ul className="list-unstyled">
-          {channels.map(channel => (
-            <li key={channel.id}>
-              <button
-                className={`btn btn-dark text-start w-100 mb-1 ${currentChannel.id === channel.id && !dmUser ? 'text-primary fw-bold' : ''}`}
-                onClick={() => { setCurrentChannel(channel); setDmUser(null); }}
-              >
-                # {channel.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        <h5 className="mt-4 mb-3">Users (DM)</h5>
-        <ul className="list-unstyled">
-          {users.filter(u => u.id !== currentUser.id).map(user => (
-            <li key={user.id} className="mb-1">
-              <button
-                className={`btn btn-dark text-start w-100 mb-1 ${dmUser?.id === user.id ? 'text-primary fw-bold' : ''}`}
-                onClick={() => setDmUser(user)}
-              >
-                <span className={`badge ${user.online ? "bg-success" : "bg-secondary"} me-2`}></span>
-                {user.name}
-              </button>
-            </li>
-          ))}
-        </ul>
+    <div className="container py-4" style={{ minHeight: "calc(100vh - 56px)" }}>
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2 className="text-primary">Peer Support Hub</h2>
+        <button 
+          className="btn btn-primary" 
+          onClick={() => setShowCreatePost(!showCreatePost)}
+        >
+          {showCreatePost ? 'Cancel' : '+ New Post'}
+        </button>
       </div>
 
-      {/* Chat Area */}
-      <div className="flex-grow-1 d-flex flex-column">
-        <div className="border-bottom p-2 bg-light">
-          <strong>
-            {dmUser ? `DM with ${dmUser.name}` : `# ${currentChannel.name}`}
-          </strong>
+      {/* Create Post Form */}
+      {showCreatePost && (
+        <div className="card mb-4 shadow">
+          <div className="card-body">
+            <h5>Create New Post</h5>
+            <form onSubmit={handleCreatePost}>
+              <div className="mb-3">
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Post Title"
+                  value={newPostTitle}
+                  onChange={(e) => setNewPostTitle(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="mb-3">
+                <textarea
+                  className="form-control"
+                  rows="4"
+                  placeholder="Share your thoughts..."
+                  value={newPostContent}
+                  onChange={(e) => setNewPostContent(e.target.value)}
+                  required
+                ></textarea>
+              </div>
+              <button type="submit" className="btn btn-success" disabled={loading}>
+                {loading ? 'Posting...' : 'Post'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="row">
+        {/* Posts List */}
+        <div className={selectedPost ? "col-md-5" : "col-md-12"}>
+          <div className="card shadow">
+            <div className="card-header bg-light">
+              <strong>Community Posts</strong>
+            </div>
+            <div className="card-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+              {posts.length === 0 && <p className="text-muted">No posts yet. Be the first to share!</p>}
+              {posts.map(post => (
+                <div key={post.id} className="card mb-3 cursor-pointer" onClick={() => fetchPost(post.id)} style={{cursor: 'pointer'}}>
+                  <div className="card-body">
+                    <h5 className="card-title">{post.title}</h5>
+                    <p className="card-text text-truncate">{post.content}</p>
+                    <div className="d-flex justify-content-between align-items-center">
+                      <small className="text-muted">
+                        By {post.user?.username || 'Anonymous'} • {new Date(post.createdAt).toLocaleDateString()}
+                      </small>
+                      <div>
+                        <button 
+                          className="btn btn-sm btn-outline-primary me-2"
+                          onClick={(e) => { e.stopPropagation(); handleLikePost(post.id); }}
+                        >
+                          👍 {post.likes}
+                        </button>
+                        <span className="badge bg-secondary">{post.comments?.length || 0} comments</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
-        <div className="flex-grow-1 p-3 overflow-auto" style={{ backgroundColor: "#36393f" }}>
-          {renderMessages()}
-          <div ref={chatEndRef} />
-        </div>
+        {/* Post Detail View */}
+        {selectedPost && (
+          <div className="col-md-7">
+            <div className="card shadow">
+              <div className="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <strong>Post Details</strong>
+                <button className="btn btn-sm btn-light" onClick={() => setSelectedPost(null)}>✕</button>
+              </div>
+              <div className="card-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+                <h4>{selectedPost.title}</h4>
+                <p className="text-muted">
+                  By {selectedPost.user?.username || 'Anonymous'} • {new Date(selectedPost.createdAt).toLocaleDateString()}
+                </p>
+                <p className="mb-3">{selectedPost.content}</p>
+                <div className="d-flex gap-2 mb-4">
+                  <button 
+                    className="btn btn-outline-primary btn-sm"
+                    onClick={() => handleLikePost(selectedPost.id)}
+                  >
+                    👍 Like ({selectedPost.likes})
+                  </button>
+                  <button 
+                    className="btn btn-outline-danger btn-sm"
+                    onClick={() => handleFlagPost(selectedPost.id)}
+                  >
+                    🚩 Flag
+                  </button>
+                </div>
 
-        <div className="p-2 bg-dark d-flex">
-          <input
-            type="text"
-            className="form-control me-2"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSend()}
-            placeholder={dmUser ? `Message ${dmUser.name}` : `Message #${currentChannel.name}`}
-            style={{ backgroundColor: "#40444b", color: "white", border: "none" }}
-          />
-          <button className="btn btn-primary" onClick={handleSend}>Send</button>
-        </div>
+                <hr />
+
+                <h5>Comments ({selectedPost.comments?.length || 0})</h5>
+                
+                {/* Add Comment Form */}
+                <form onSubmit={handleAddComment} className="mb-3">
+                  <div className="input-group">
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Add a comment..."
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                    />
+                    <button type="submit" className="btn btn-primary">Comment</button>
+                  </div>
+                </form>
+
+                {/* Comments List */}
+                {selectedPost.comments && selectedPost.comments.map(comment => (
+                  <div key={comment.id} className="card mb-2">
+                    <div className="card-body py-2">
+                      <p className="mb-1">{comment.content}</p>
+                      <div className="d-flex justify-content-between align-items-center">
+                        <small className="text-muted">
+                          By {comment.user?.username || 'Anonymous'} • {new Date(comment.createdAt).toLocaleDateString()}
+                        </small>
+                        <button 
+                          className="btn btn-sm btn-outline-primary"
+                          onClick={() => handleLikeComment(comment.id)}
+                        >
+                          👍 {comment.likes}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

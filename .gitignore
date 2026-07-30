@@ -1,5 +1,8 @@
 backend/venv/
-# frontend/node_modules/
+backend/express/node_modules/
+frontend/node_modules/
+backend/express/.env
+*.db
 *.log
 .DS_Store
 
