@@ -232,10 +232,6 @@ Contributions are welcome! Please follow these steps:
 
 This project is licensed under the MIT License.
 
-## 👨‍💻 Author
-
-**Poorna** - [GitHub Profile](https://github.com/poorna825)
-
 ## 🙏 Acknowledgments
 
 - HuggingFace for AI models
