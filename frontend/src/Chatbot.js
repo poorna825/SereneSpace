@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import { API_URL } from './config';
 
 function Chatbot() {
   const [messages, setMessages] = useState([
@@ -51,7 +52,7 @@ function Chatbot() {
       }
 
       // Use the new emotion-aware endpoint
-      const res = await fetch("http://localhost:4000/api/chatbot/emotion", {
+      const res = await fetch(`${API_URL}/api/chatbot/emotion`, {
         method: "POST",
         headers: headers,
         body: JSON.stringify({ 

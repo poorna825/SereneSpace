@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FaUsers, 
+import {
+  FaUsers,
   FaComments, 
   FaCalendarCheck, 
   FaExclamationTriangle,
@@ -11,6 +11,7 @@ import {
   FaUser,
   FaFlag
 } from 'react-icons/fa';
+import { API_URL } from './config';
 
 function AdminDashboard() {
   const [analytics, setAnalytics] = useState(null);
@@ -30,7 +31,7 @@ function AdminDashboard() {
     }
 
     // Fetch analytics data
-    fetch('http://localhost:4000/api/analytics', {
+    fetch(`${API_URL}/api/analytics`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => {
@@ -52,7 +53,7 @@ function AdminDashboard() {
       });
 
     // Fetch flagged content
-    fetch('http://localhost:4000/api/posts/flagged', {
+    fetch(`${API_URL}/api/posts/flagged`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -63,7 +64,7 @@ function AdminDashboard() {
       })
       .catch(err => console.error('Error fetching flagged posts:', err));
 
-    fetch('http://localhost:4000/api/comments/flagged', {
+    fetch(`${API_URL}/api/comments/flagged`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -75,7 +76,7 @@ function AdminDashboard() {
       .catch(err => console.error('Error fetching flagged comments:', err));
 
     // Fetch all users for user management
-    fetch('http://localhost:4000/api/admin/users', {
+    fetch(`${API_URL}/api/admin/users`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -92,7 +93,7 @@ function AdminDashboard() {
     const endpoint = type === 'post' ? 'posts' : 'comments';
     
     try {
-      const res = await fetch(`http://localhost:4000/api/${endpoint}/${id}/unflag`, {
+      const res = await fetch(`${API_URL}/api/${endpoint}/${id}/unflag`, {
         method: 'PATCH',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -122,7 +123,7 @@ function AdminDashboard() {
     const endpoint = type === 'post' ? 'posts' : 'comments';
     
     try {
-      const res = await fetch(`http://localhost:4000/api/${endpoint}/${id}`, {
+      const res = await fetch(`${API_URL}/api/${endpoint}/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

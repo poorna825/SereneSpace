@@ -11,9 +11,9 @@ SereneSpace is a full-stack web application that combines AI technology with men
 ### 🔒 Privacy & Security
 - **Dual Identity System**: 
   - Public username for community interactions (posts, comments)
-  - Private fullName and email visible only to admins and assigned counselors
+  - Private fullName and email visible only to admins and to counselors who share an appointment with the user
 - **Role-Based Access Control**: Admin, Counselor, and User roles with appropriate permissions
-- **Secure Authentication**: JWT-based authentication with bcrypt password hashing
+- **Authentication**: JWT-based authentication with bcrypt password hashing; self-registration always creates a regular user (counselor/admin roles are granted by an admin)
 - **Comment Moderation**: Flag-based system with soft delete and admin controls
 
 ### 🤖 AI-Powered Chatbot
@@ -30,14 +30,14 @@ SereneSpace is a full-stack web application that combines AI technology with men
 
 ### 👥 Peer Support Hub
 - Create and share posts about mental health experiences
-- Comment and react to community posts (❤️ Support, 💪 Strength, 🤗 Hug, ⭐ Inspiring)
+- Comment on and like posts and comments (one like per user)
 - **Username-based interactions** (full name kept private)
 - Safe and supportive community guidelines with moderation
 
 ### 📅 Professional Support
 - Book appointments with mental health professionals
 - Appointment status tracking (Pending, Confirmed, Completed, Cancelled)
-- **Counselor-patient privacy**: Counselors see patient details only for assigned appointments
+- **Counselor-patient privacy**: Counselors see patient details only for their own appointments
 - Access to verified Indian therapy platforms:
   - **Practo**: Find therapists and psychiatrists
   - **TalktoAngel**: Online therapy and counseling
@@ -55,9 +55,9 @@ SereneSpace is a full-stack web application that combines AI technology with men
 
 ### Frontend
 - **React 19.1.1**: Modern UI with functional components and hooks
-- **React Router 7.1.3**: Client-side routing
+- **React Router 6**: Client-side routing
 - **Bootstrap 5.3.8**: Responsive design and styling
-- **Axios**: HTTP client for API requests
+- **Fetch API**: HTTP requests (backend URL configurable via `REACT_APP_API_URL`)
 
 ### Backend
 - **Node.js & Express 4.18.2**: RESTful API server
@@ -90,12 +90,14 @@ npm install
 
 Create a `.env` file in `backend/express/`:
 ```env
-DATABASE_URL="file:./prisma/dev.db"
 JWT_SECRET="your-secure-jwt-secret-key"
 OPENAI_API_KEY="your-openai-api-key"
 OPENAI_MODEL="gpt-3.5-turbo"
 PORT=4000
+CORS_ORIGIN="http://localhost:3000"
 ```
+
+`JWT_SECRET` is required: the server will not start without it.
 
 **Get your OpenAI API key:**
 - Visit https://platform.openai.com/api-keys
@@ -141,8 +143,8 @@ SereneSpace/
 │       ├── prisma/
 │       │   ├── schema.prisma     # Database schema
 │       │   └── dev.db            # SQLite database
-│       ├── package.json
-│       └── Procfile
+│       └── package.json
+├── Procfile                  # Starts the Express backend
 ├── frontend/
 │   ├── public/
 │   ├── src/
@@ -165,20 +167,25 @@ SereneSpace/
 
 ### Chatbot
 - `POST /api/chatbot/emotion` - Emotion detection and AI response
-- `GET /api/chatbot/sessions` - Get user's chat sessions
-- `GET /api/chatbot/session/:sessionId/messages` - Get messages for a session
 
 ### Peer Hub
 - `POST /api/posts` - Create a new post
 - `GET /api/posts` - Get all posts with comments and reactions
-- `POST /api/posts/:postId/comments` - Add comment to a post
-- `POST /api/posts/:postId/react` - React to a post
-- `POST /api/comments/:commentId/react` - React to a comment
+- `GET /api/posts/:id` - Get a single post with comments
+- `POST /api/posts/:id/comments` - Add comment to a post
+- `POST /api/posts/:id/like` - Like (or unlike) a post
+- `POST /api/posts/:id/flag` - Flag a post for review
+- `POST /api/comments/:id/like` - Like (or unlike) a comment
+- `POST /api/comments/:id/flag` - Flag a comment for review
+
+### Moderation (admin/counselor)
+- `GET /api/posts/flagged`, `GET /api/comments/flagged` - Flagged content
+- `PATCH /api/posts/:id/unflag`, `PATCH /api/comments/:id/unflag` - Clear flags (admin)
 
 ### Appointments
 - `POST /api/appointments` - Book an appointment
 - `GET /api/appointments` - Get user's appointments
-- `PATCH /api/appointments/:id/status` - Update appointment status
+- `PUT /api/appointments/:id` - Update status (counselor/admin; patients can only cancel) or reschedule
 
 ### Resources
 - `GET /api/resources` - Get all mental health resources (articles, videos)
@@ -213,10 +220,10 @@ SereneSpace is tailored for Indian users with:
 
 ## 🔒 Security
 
-- JWT-based authentication
-- Password hashing with bcryptjs
-- Protected API routes
-- Secure session management
+- JWT-based authentication (required `JWT_SECRET`, 2-hour tokens)
+- Password hashing with bcryptjs, minimum 8 characters
+- Role-based protected API routes
+- `helmet` headers, restricted CORS, and rate limiting on login, register and the chatbot
 
 ## 🤝 Contributing
 
@@ -234,7 +241,7 @@ This project is licensed under the MIT License.
 
 ## 🙏 Acknowledgments
 
-- HuggingFace for AI models
+- OpenAI for emotion detection and response generation
 - Indian mental health organizations (AASRA, Vandrevala Foundation, iCall, NIMHANS)
 - Open-source community
 

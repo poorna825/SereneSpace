@@ -10,6 +10,7 @@ import Register from './Register';
 import Appointments from './Appointments';
 import AdminDashboard from './AdminDashboard';
 import { FaUserFriends, FaBookOpen, FaRobot, FaMusic, FaPause, FaPlay } from "react-icons/fa";
+import { API_URL } from './config';
 
 // Scroll to top on route change
 function ScrollToTop() {
@@ -291,7 +292,7 @@ function App() {
     // Check if user is logged in
     const token = localStorage.getItem('token');
     if (token) {
-      fetch('http://localhost:4000/api/profile', {
+      fetch(`${API_URL}/api/profile`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())

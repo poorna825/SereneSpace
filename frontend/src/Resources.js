@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import { API_URL } from './config';
 
 // Breathing Animation Component
 function BreathingGuide() {
@@ -109,7 +110,7 @@ function Resources() {
 
   useEffect(() => {
     // Fetch resources from backend
-    fetch('http://localhost:4000/api/resources')
+    fetch(`${API_URL}/api/resources`)
       .then(res => res.json())
       .then(data => {
         setResources(data.resources || []);

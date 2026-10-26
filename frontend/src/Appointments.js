@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_URL } from './config';
 
 export default function Appointments() {
   const [user, setUser] = useState(null);
@@ -39,7 +40,7 @@ export default function Appointments() {
 
   const fetchUserProfile = async () => {
     try {
-      const res = await fetch('http://localhost:4000/api/profile', {
+      const res = await fetch(`${API_URL}/api/profile`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -53,7 +54,7 @@ export default function Appointments() {
 
   const fetchAppointments = async () => {
     try {
-      const res = await fetch('http://localhost:4000/api/appointments', {
+      const res = await fetch(`${API_URL}/api/appointments`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -71,7 +72,7 @@ export default function Appointments() {
 
   const fetchCounselors = async () => {
     try {
-      const res = await fetch('http://localhost:4000/api/users', {
+      const res = await fetch(`${API_URL}/api/users`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -100,7 +101,7 @@ export default function Appointments() {
     try {
       const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`).toISOString();
       
-      const res = await fetch('http://localhost:4000/api/appointments', {
+      const res = await fetch(`${API_URL}/api/appointments`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -138,7 +139,7 @@ export default function Appointments() {
     }
 
     try {
-      const res = await fetch(`http://localhost:4000/api/appointments/${appointmentId}`, {
+      const res = await fetch(`${API_URL}/api/appointments/${appointmentId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -157,7 +158,7 @@ export default function Appointments() {
 
   const handleUpdateStatus = async (appointmentId, newStatus) => {
     try {
-      const res = await fetch(`http://localhost:4000/api/appointments/${appointmentId}`, {
+      const res = await fetch(`${API_URL}/api/appointments/${appointmentId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -187,7 +188,7 @@ export default function Appointments() {
     try {
       const scheduledAt = new Date(`${newDate}T${newTime}`).toISOString();
       
-      const res = await fetch(`http://localhost:4000/api/appointments/${appointmentId}`, {
+      const res = await fetch(`${API_URL}/api/appointments/${appointmentId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,

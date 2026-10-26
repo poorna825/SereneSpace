@@ -1325,7 +1325,11 @@ app.post('/api/posts/:id/flag', authenticateJWT, async (req, res) => {
     const post = await prisma.post.findUnique({ where: { id: postId } });
     
     if (!post) return res.status(404).json({ error: 'Post not found' });
-    
+
+    if (post.userId === req.user.userId) {
+      return res.status(400).json({ error: 'You cannot flag your own post' });
+    }
+
     const updated = await prisma.post.update({
       where: { id: postId },
       data: { flagged: true }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import 'bootstrap/dist/css/bootstrap.min.css';
+import { API_URL } from './config';
 
 function PeerHub() {
   const [posts, setPosts] = useState([]);
@@ -15,7 +16,7 @@ function PeerHub() {
   // Fetch all posts
   const fetchPosts = async () => {
     try {
-      const res = await fetch('http://localhost:4000/api/posts');
+      const res = await fetch(`${API_URL}/api/posts`);
       const data = await res.json();
       setPosts(data.posts || []);
     } catch (err) {
@@ -26,7 +27,7 @@ function PeerHub() {
   // Fetch specific post with comments
   const fetchPost = async (postId) => {
     try {
-      const res = await fetch(`http://localhost:4000/api/posts/${postId}`);
+      const res = await fetch(`${API_URL}/api/posts/${postId}`);
       const data = await res.json();
       setSelectedPost(data.post);
     } catch (err) {
@@ -48,7 +49,7 @@ function PeerHub() {
 
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:4000/api/posts', {
+      const res = await fetch(`${API_URL}/api/posts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -79,7 +80,7 @@ function PeerHub() {
     }
 
     try {
-      const res = await fetch(`http://localhost:4000/api/posts/${postId}/like`, {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/like`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -105,7 +106,7 @@ function PeerHub() {
     if (!window.confirm('Are you sure you want to flag this post for review?')) return;
 
     try {
-      const res = await fetch(`http://localhost:4000/api/posts/${postId}/flag`, {
+      const res = await fetch(`${API_URL}/api/posts/${postId}/flag`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -131,7 +132,7 @@ function PeerHub() {
     if (!newComment.trim()) return;
 
     try {
-      const res = await fetch(`http://localhost:4000/api/posts/${selectedPost.id}/comments`, {
+      const res = await fetch(`${API_URL}/api/posts/${selectedPost.id}/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -157,7 +158,7 @@ function PeerHub() {
     }
 
     try {
-      const res = await fetch(`http://localhost:4000/api/comments/${commentId}/like`, {
+      const res = await fetch(`${API_URL}/api/comments/${commentId}/like`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
