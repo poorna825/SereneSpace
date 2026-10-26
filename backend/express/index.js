@@ -42,11 +42,13 @@ app.get('/', (req, res) => {
 
 // User registration
 app.post('/api/register', async (req, res) => {
-  const { username, fullName, email, password, role } = req.body;
-  
+  // Role is never taken from the client; self-registration always creates a regular user.
+  // Counselor and admin accounts must be created by an admin (PUT /api/users/:id) or a seed script.
+  const { username, fullName, email, password } = req.body;
+
   // Validate required fields
-  if (!username || !fullName || !email || !password || !role) {
-    return res.status(400).json({ error: 'Missing required fields: username, fullName, email, password, role' });
+  if (!username || !fullName || !email || !password) {
+    return res.status(400).json({ error: 'Missing required fields: username, fullName, email, password' });
   }
   
   try {
@@ -70,7 +72,7 @@ app.post('/api/register', async (req, res) => {
         fullName,
         email,
         password: hashedPassword,
-        role
+        role: 'user'
       },
     });
     
@@ -820,7 +822,14 @@ app.put('/api/users/:id', authenticateJWT, async (req, res) => {
 
 app.delete('/api/users/:id', authenticateJWT, async (req, res) => {
   try {
-    await prisma.user.delete({ where: { id: Number(req.params.id) } });
+    const targetUserId = Number(req.params.id);
+
+    // Only admin or the user themselves can delete
+    if (req.user.role !== 'admin' && req.user.userId !== targetUserId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await prisma.user.delete({ where: { id: targetUserId } });
     res.json({ message: 'User deleted' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete user', details: err.message });

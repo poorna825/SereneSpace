@@ -6,7 +6,6 @@ export default function Register({ onRegister }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('user');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -18,7 +17,7 @@ export default function Register({ onRegister }) {
       const res = await fetch('http://localhost:4000/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, fullName, email, password, role })
+        body: JSON.stringify({ username, fullName, email, password })
       });
       const data = await res.json();
       if (res.ok) {
@@ -88,14 +87,6 @@ export default function Register({ onRegister }) {
                     onChange={e => setPassword(e.target.value)} 
                     required 
                   />
-                </div>
-                <div className="mb-4">
-                  <label className="form-label fw-semibold">Role</label>
-                  <select className="form-select form-select-lg" value={role} onChange={e => setRole(e.target.value)}>
-                    <option value="user">User</option>
-                    <option value="counselor">Counselor</option>
-                    <option value="admin">Admin</option>
-                  </select>
                 </div>
                 {error && <div className="alert alert-danger">{error}</div>}
                 <button 
