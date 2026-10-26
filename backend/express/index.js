@@ -4,17 +4,21 @@ import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import fetch from 'node-fetch';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import Sentiment from 'sentiment';
 import OpenAI from 'openai';
 
 const app = express();
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required (see .env.example)');
+}
 const sentiment = new Sentiment();
 
-// Initialize OpenAI API
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'your_openai_api_key';
+// Initialize OpenAI API (without a key the chatbot falls back to keyword replies)
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'missing-openai-api-key';
 const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
 });
@@ -29,12 +33,45 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
 // Crisis keywords for detection
 const CRISIS_KEYWORDS = [
   'suicide', 'suicidal', 'self-harm', 'self harm', 'kill myself', 'end my life', 'hurt myself',
-  'overdose', 'cutting', 'want to die', 'better off dead', 'no reason to live',
+  'overdose', 'cutting myself', 'cut myself', 'want to die', 'better off dead', 'no reason to live',
   'can\'t go on', 'give up on life', 'end it all', 'harm myself'
 ];
 
-app.use(cors());
-app.use(express.json());
+const CRISIS_REGEX = new RegExp(
+  `\\b(?:${CRISIS_KEYWORDS.map(kw => kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`,
+  'i'
+);
+
+// Word-boundary match so e.g. "cutting vegetables" does not trigger a crisis response
+function isCrisisMessage(message) {
+  return CRISIS_REGEX.test(String(message));
+}
+
+const CRISIS_REPLY = 'I\'m very concerned about what you\'re sharing. Please know that help is available right now. 🇮🇳 India Crisis Helplines: AASRA (24x7) at +91 9820466726, Vandrevala Foundation at 1860 2662 345 or 1800 2333 330, iCall at +91 9152987821, or NIMHANS at 080-46110007. Emergency services: 112. You don\'t have to face this alone - professional help is just a call away.';
+
+app.use(helmet());
+app.use(cors({
+  origin: (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',').map(o => o.trim())
+}));
+app.use(express.json({ limit: '100kb' }));
+
+// Brute-force protection for auth endpoints and cost protection for the paid chatbot API
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, please try again later' }
+});
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'You are sending messages too quickly, please slow down' }
+});
+app.use(['/api/login', '/api/register'], authLimiter);
+app.use('/api/chatbot', chatLimiter);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Express backend running!' });
@@ -51,6 +88,10 @@ app.post('/api/register', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: username, fullName, email, password' });
   }
   
+  if (String(password).length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
   try {
     // Check if email already exists
     const existingEmail = await prisma.user.findUnique({ where: { email } });
@@ -85,7 +126,7 @@ app.post('/api/register', async (req, res) => {
       } 
     });
   } catch (err) {
-    res.status(500).json({ error: 'User registration failed', details: err.message });
+    res.status(500).json({ error: 'User registration failed' });
   }
 });
 
@@ -118,7 +159,7 @@ app.post('/api/login', async (req, res) => {
       } 
     });
   } catch (err) {
-    res.status(500).json({ error: 'Login failed', details: err.message });
+    res.status(500).json({ error: 'Login failed' });
   }
 });
 
@@ -310,8 +351,43 @@ function getUserSelectFields(viewerRole) {
   return baseFields;
 }
 
+// Returns the session only if the caller owns it (anonymous callers only match anonymous sessions)
+async function getOwnedChatSession(sessionId, userId) {
+  if (!sessionId || Number.isNaN(Number(sessionId))) return null;
+  const session = await prisma.chatSession.findUnique({ where: { id: Number(sessionId) } });
+  if (!session || (session.userId ?? null) !== (userId ?? null)) return null;
+  return session;
+}
+
+// Finds (or creates) the caller's chat session and stores the user message and bot reply.
+// Failures are logged and never block the chat reply; returns the session or null.
+async function storeChatExchange({ sessionId, user, message, botReply, emotion }) {
+  const userId = user && user.userId ? user.userId : null;
+  let chatSession = null;
+  try {
+    chatSession = await getOwnedChatSession(sessionId, userId);
+    if (!chatSession) {
+      chatSession = await prisma.chatSession.create({ data: { userId } });
+    }
+    await prisma.message.create({
+      data: {
+        chatSessionId: chatSession.id,
+        sender: userId ? user.email : 'anonymous',
+        content: message,
+        emotion,
+      },
+    });
+    await prisma.message.create({
+      data: { chatSessionId: chatSession.id, sender: 'bot', content: botReply, emotion: null },
+    });
+  } catch (dbError) {
+    console.error('Failed to store chat history:', dbError.message);
+  }
+  return chatSession;
+}
+
 // Chatbot API route
-app.post('/api/chatbot', optionalAuthenticateJWT, async (req, res) => {
+app.post('/api/chatbot',optionalAuthenticateJWT, async (req, res) => {
   const { message, anonymous, sessionId } = req.body;
   if (!message) return res.status(400).json({ error: 'Message required' });
 
@@ -324,7 +400,7 @@ app.post('/api/chatbot', optionalAuthenticateJWT, async (req, res) => {
   const sentimentScore = sentimentAnalysis.score; // Positive = positive sentiment, Negative = negative sentiment
 
   // Detect crisis keywords
-  const crisis = CRISIS_KEYWORDS.some(kw => message.toLowerCase().includes(kw));
+  const crisis = isCrisisMessage(message);
 
   // Generate bot reply with expanded patterns and sentiment awareness
   let botReply = 'I understand. Can you tell me more about what you\'re feeling?';
@@ -333,7 +409,7 @@ app.post('/api/chatbot', optionalAuthenticateJWT, async (req, res) => {
   
   // CRISIS DETECTION (highest priority)
   if (crisis) {
-    botReply = 'I\'m very concerned about what you\'re sharing. Please know that help is available right now. 🇮🇳 India Crisis Helplines: AASRA (24x7) at +91 9820466726, Vandrevala Foundation at 1860 2662 345 or 1800 2333 330, iCall at +91 9152987821, or NIMHANS at 080-46110007. Emergency services: 112. You don\'t have to face this alone - professional help is just a call away.';
+    botReply = CRISIS_REPLY;
   }
   // DEPRESSION & HOPELESSNESS
   else if (lowerMessage.includes('depressed') || lowerMessage.includes('depression')) {
@@ -443,9 +519,7 @@ app.post('/api/chatbot', optionalAuthenticateJWT, async (req, res) => {
   // Store chat history in DB
   let chatSession;
   try {
-    if (sessionId) {
-      chatSession = await prisma.chatSession.findUnique({ where: { id: Number(sessionId) } });
-    }
+    chatSession = await getOwnedChatSession(sessionId, isAnonymous ? null : req.user.userId);
     if (!chatSession) {
       chatSession = await prisma.chatSession.create({
         data: {
@@ -453,7 +527,7 @@ app.post('/api/chatbot', optionalAuthenticateJWT, async (req, res) => {
         },
       });
     }
-    
+
     // Store user message
     await prisma.message.create({
       data: {
@@ -494,7 +568,19 @@ app.post('/api/chatbot/emotion', optionalAuthenticateJWT, async (req, res) => {
   let chatSession = null;
   let detectedEmotion = 'neutral';
   let botReply = 'I understand. Can you tell me more about what you\'re feeling?';
-  
+
+  // Crisis messages skip the LLM and always get the helpline response
+  if (isCrisisMessage(message)) {
+    detectedEmotion = 'sadness';
+    chatSession = await storeChatExchange({ sessionId, user: req.user, message, botReply: CRISIS_REPLY, emotion: detectedEmotion });
+    return res.json({
+      reply: CRISIS_REPLY,
+      sessionId: chatSession?.id || null,
+      emotion: detectedEmotion,
+      timestamp: new Date().toISOString()
+    });
+  }
+
   try {
     // Step 1: Run emotion analysis using OpenAI
     try {
@@ -615,60 +701,9 @@ Emotion:`;
       botReply = generateEmotionResponse(detectedEmotion, message);
     }
     
-    // Step 4: Retrieve or create chat session
-    // First try to get existing session
-    if (sessionId) {
-      try {
-        chatSession = await prisma.chatSession.findUnique({ 
-          where: { id: Number(sessionId) } 
-        });
-      } catch (dbError) {
-        console.error('Failed to retrieve session:', dbError.message);
-      }
-    }
-    
-    // If no existing session, create new one
-    if (!chatSession) {
-      try {
-        chatSession = await prisma.chatSession.create({
-          data: {
-            userId: isAnonymous ? null : req.user.userId,
-          },
-        });
-      } catch (dbError) {
-        console.error('Failed to create session:', dbError.message);
-        // Continue without session - we'll return response without sessionId
-      }
-    }
-    
-    // Step 5: Store messages in database
-    if (chatSession) {
-      try {
-        // Store user message with detected emotion
-        await prisma.message.create({
-          data: {
-            chatSessionId: chatSession.id,
-            sender: isAnonymous ? 'anonymous' : req.user.email,
-            content: message,
-            emotion: detectedEmotion,
-          },
-        });
-        
-        // Store bot reply
-        await prisma.message.create({
-          data: {
-            chatSessionId: chatSession.id,
-            sender: 'bot',
-            content: botReply,
-            emotion: null,
-          },
-        });
-      } catch (dbError) {
-        console.error('Failed to store messages:', dbError.message);
-        // Continue - session is still valid even if messages weren't saved
-      }
-    }
-    
+    // Steps 4-5: Retrieve or create chat session and store messages
+    chatSession = await storeChatExchange({ sessionId, user: req.user, message, botReply, emotion: detectedEmotion });
+
     // Step 6: Return response
     res.json({ 
       reply: botReply, 
@@ -763,7 +798,7 @@ app.get('/api/users', authenticateJWT, async (req, res) => {
     
     res.json({ users: formattedUsers });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch users', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
 
@@ -781,7 +816,7 @@ app.get('/api/users/:id', authenticateJWT, async (req, res) => {
     
     res.json({ user: formattedUser });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch user', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch user' });
   }
 });
 
@@ -816,7 +851,7 @@ app.put('/api/users/:id', authenticateJWT, async (req, res) => {
       role: user.role
     } });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update user', details: err.message });
+    res.status(500).json({ error: 'Failed to update user' });
   }
 });
 
@@ -832,11 +867,40 @@ app.delete('/api/users/:id', authenticateJWT, async (req, res) => {
     await prisma.user.delete({ where: { id: targetUserId } });
     res.json({ message: 'User deleted' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to delete user', details: err.message });
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 
 // Appointment/Booking System API routes
+const APPOINTMENT_STATUSES = ['pending', 'confirmed', 'completed', 'cancelled'];
+
+async function isCounselorUser(id) {
+  if (!Number.isInteger(id)) return false;
+  const counselor = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+  return counselor?.role === 'counselor';
+}
+
+// Privileged viewers (admin/counselor) get full identity; everyone else gets public info only
+function formatAppointmentPerson(person, isPrivileged) {
+  if (!person) return null;
+  if (!isPrivileged) return getPublicUserInfo(person);
+  return {
+    id: person.id,
+    username: person.username || `user${person.id}`,
+    fullName: person.fullName,
+    email: person.email,
+    role: person.role
+  };
+}
+
+function formatAppointment(appointment, isPrivileged) {
+  return {
+    ...appointment,
+    user: formatAppointmentPerson(appointment.user, isPrivileged),
+    counselor: formatAppointmentPerson(appointment.counselor, isPrivileged)
+  };
+}
+
 // Create appointment
 app.post('/api/appointments', authenticateJWT, async (req, res) => {
   const { counselorId, scheduledAt } = req.body;
@@ -844,17 +908,24 @@ app.post('/api/appointments', authenticateJWT, async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   try {
+    const when = new Date(scheduledAt);
+    if (Number.isNaN(when.getTime()) || when <= new Date()) {
+      return res.status(400).json({ error: 'scheduledAt must be a valid future date' });
+    }
+    if (!(await isCounselorUser(Number(counselorId)))) {
+      return res.status(400).json({ error: 'counselorId must belong to a counselor' });
+    }
     const appointment = await prisma.appointment.create({
       data: {
         userId: req.user.userId,
         counselorId: Number(counselorId),
-        scheduledAt: new Date(scheduledAt),
+        scheduledAt: when,
         status: 'pending'
       }
     });
     res.json({ appointment });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create appointment', details: err.message });
+    res.status(500).json({ error: 'Failed to create appointment' });
   }
 });
 
@@ -867,9 +938,11 @@ app.get('/api/appointments', authenticateJWT, async (req, res) => {
     if (userId) where.userId = Number(userId);
     if (counselorId) where.counselorId = Number(counselorId);
     if (status) where.status = status;
-    
-    // If user is not admin/counselor, only show their own appointments
-    if (req.user.role === 'user') {
+
+    // Only admins can list everyone's appointments; others are limited to ones they are part of
+    if (req.user.role === 'counselor') {
+      where.AND = [{ OR: [{ userId: req.user.userId }, { counselorId: req.user.userId }] }];
+    } else if (req.user.role !== 'admin') {
       where.userId = req.user.userId;
     }
     
@@ -884,30 +957,12 @@ app.get('/api/appointments', authenticateJWT, async (req, res) => {
     
     // Format user info based on privacy rules
     // Counselors and admins see full info in appointments (therapeutic relationship)
-    const formattedAppointments = appointments.map(apt => {
-      const isPrivileged = req.user.role === 'admin' || req.user.role === 'counselor';
-      return {
-        ...apt,
-        user: isPrivileged ? {
-          id: apt.user.id,
-          username: apt.user.username || `user${apt.user.id}`,
-          fullName: apt.user.fullName,
-          email: apt.user.email,
-          role: apt.user.role
-        } : getPublicUserInfo(apt.user),
-        counselor: isPrivileged ? {
-          id: apt.counselor.id,
-          username: apt.counselor.username || `user${apt.counselor.id}`,
-          fullName: apt.counselor.fullName,
-          email: apt.counselor.email,
-          role: apt.counselor.role
-        } : getPublicUserInfo(apt.counselor)
-      };
-    });
+    const isPrivileged = req.user.role === 'admin' || req.user.role === 'counselor';
+    const formattedAppointments = appointments.map(apt => formatAppointment(apt, isPrivileged));
     
     res.json({ appointments: formattedAppointments });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch appointments', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch appointments' });
   }
 });
 
@@ -943,7 +998,7 @@ app.get('/api/appointments/counselor/:counselorId', authenticateJWT, requireRole
     
     res.json({ appointments: formattedAppointments });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch counselor appointments', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch counselor appointments' });
   }
 });
 
@@ -960,34 +1015,18 @@ app.get('/api/appointments/:id', authenticateJWT, async (req, res) => {
     
     if (!appointment) return res.status(404).json({ error: 'Appointment not found' });
     
-    // Check access rights
-    if (req.user.role === 'user' && appointment.userId !== req.user.userId) {
+    // Check access rights: admins see all, everyone else only appointments they are part of
+    if (req.user.role !== 'admin' &&
+        appointment.userId !== req.user.userId &&
+        appointment.counselorId !== req.user.userId) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    
+
     // Format with full info for admins/counselors, public info for regular users viewing their own appointment
     const isPrivileged = req.user.role === 'admin' || req.user.role === 'counselor';
-    const formattedAppointment = {
-      ...appointment,
-      user: isPrivileged ? {
-        id: appointment.user.id,
-        username: appointment.user.username || `user${appointment.user.id}`,
-        fullName: appointment.user.fullName,
-        email: appointment.user.email,
-        role: appointment.user.role
-      } : getPublicUserInfo(appointment.user),
-      counselor: isPrivileged ? {
-        id: appointment.counselor.id,
-        username: appointment.counselor.username || `user${appointment.counselor.id}`,
-        fullName: appointment.counselor.fullName,
-        email: appointment.counselor.email,
-        role: appointment.counselor.role
-      } : getPublicUserInfo(appointment.counselor)
-    };
-    
-    res.json({ appointment: formattedAppointment });
+    res.json({ appointment: formatAppointment(appointment, isPrivileged) });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch appointment', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch appointment' });
   }
 });
 
@@ -1012,10 +1051,34 @@ app.put('/api/appointments/:id', authenticateJWT, async (req, res) => {
     
     // Build update data
     const updateData = {};
-    if (scheduledAt) updateData.scheduledAt = new Date(scheduledAt);
-    if (status) updateData.status = status;
-    if (counselorId) updateData.counselorId = Number(counselorId);
-    
+    if (scheduledAt) {
+      const when = new Date(scheduledAt);
+      if (Number.isNaN(when.getTime()) || when <= new Date()) {
+        return res.status(400).json({ error: 'scheduledAt must be a valid future date' });
+      }
+      updateData.scheduledAt = when;
+    }
+    if (status) {
+      if (!APPOINTMENT_STATUSES.includes(status)) {
+        return res.status(400).json({ error: `status must be one of: ${APPOINTMENT_STATUSES.join(', ')}` });
+      }
+      // The patient may only cancel; confirming/completing is for the counselor or an admin
+      if (!isAdmin && !isCounselor && status !== 'cancelled') {
+        return res.status(403).json({ error: 'You can only cancel your own appointment' });
+      }
+      updateData.status = status;
+    }
+    if (counselorId) {
+      // Reassigning the counselor is an admin action
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Only an admin can reassign the counselor' });
+      }
+      if (!(await isCounselorUser(Number(counselorId)))) {
+        return res.status(400).json({ error: 'counselorId must belong to a counselor' });
+      }
+      updateData.counselorId = Number(counselorId);
+    }
+
     const appointment = await prisma.appointment.update({
       where: { id: appointmentId },
       data: updateData,
@@ -1027,27 +1090,9 @@ app.put('/api/appointments/:id', authenticateJWT, async (req, res) => {
     
     // Format with full info for admins/counselors
     const isPrivileged = req.user.role === 'admin' || req.user.role === 'counselor';
-    const formattedAppointment = {
-      ...appointment,
-      user: isPrivileged ? {
-        id: appointment.user.id,
-        username: appointment.user.username || `user${appointment.user.id}`,
-        fullName: appointment.user.fullName,
-        email: appointment.user.email,
-        role: appointment.user.role
-      } : getPublicUserInfo(appointment.user),
-      counselor: isPrivileged ? {
-        id: appointment.counselor.id,
-        username: appointment.counselor.username || `user${appointment.counselor.id}`,
-        fullName: appointment.counselor.fullName,
-        email: appointment.counselor.email,
-        role: appointment.counselor.role
-      } : getPublicUserInfo(appointment.counselor)
-    };
-    
-    res.json({ appointment: formattedAppointment });
+    res.json({ appointment: formatAppointment(appointment, isPrivileged) });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update appointment', details: err.message });
+    res.status(500).json({ error: 'Failed to update appointment' });
   }
 });
 
@@ -1067,7 +1112,7 @@ app.delete('/api/appointments/:id', authenticateJWT, async (req, res) => {
     await prisma.appointment.delete({ where: { id: appointmentId } });
     res.json({ message: 'Appointment deleted' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to delete appointment', details: err.message });
+    res.status(500).json({ error: 'Failed to delete appointment' });
   }
 });
 
@@ -1086,12 +1131,12 @@ app.post('/api/posts', authenticateJWT, async (req, res) => {
         content
       },
       include: {
-        user: { select: { id: true, email: true, role: true } }
+        user: { select: { id: true, username: true, role: true } }
       }
     });
     res.json({ post });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create post', details: err.message });
+    res.status(500).json({ error: 'Failed to create post' });
   }
 });
 
@@ -1139,7 +1184,23 @@ app.get('/api/posts', optionalAuthenticateJWT, async (req, res) => {
     
     res.json({ posts: postsWithPublicInfo });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch posts', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch posts' });
+  }
+});
+
+// Get all flagged posts (for admin dashboard); must be registered before /api/posts/:id
+app.get('/api/posts/flagged', authenticateJWT, requireRole('admin', 'counselor'), async (req, res) => {
+  try {
+    const flaggedPosts = await prisma.post.findMany({
+      where: { flagged: true },
+      include: {
+        user: { select: { id: true, username: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json({ posts: flaggedPosts });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch flagged posts' });
   }
 });
 
@@ -1177,7 +1238,7 @@ app.get('/api/posts/:id', optionalAuthenticateJWT, async (req, res) => {
     
     res.json({ post: postWithPublicInfo });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch post', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch post' });
   }
 });
 
@@ -1199,13 +1260,13 @@ app.put('/api/posts/:id', authenticateJWT, async (req, res) => {
       where: { id: postId },
       data: { title, content },
       include: {
-        user: { select: { id: true, email: true, role: true } }
+        user: { select: { id: true, username: true, role: true } }
       }
     });
     
     res.json({ post });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update post', details: err.message });
+    res.status(500).json({ error: 'Failed to update post' });
   }
 });
 
@@ -1225,7 +1286,7 @@ app.delete('/api/posts/:id', authenticateJWT, async (req, res) => {
     await prisma.post.delete({ where: { id: postId } });
     res.json({ message: 'Post deleted' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to delete post', details: err.message });
+    res.status(500).json({ error: 'Failed to delete post' });
   }
 });
 
@@ -1233,18 +1294,27 @@ app.delete('/api/posts/:id', authenticateJWT, async (req, res) => {
 app.post('/api/posts/:id/like', authenticateJWT, async (req, res) => {
   try {
     const postId = Number(req.params.id);
+    const userId = req.user.userId;
     const post = await prisma.post.findUnique({ where: { id: postId } });
-    
+
     if (!post) return res.status(404).json({ error: 'Post not found' });
-    
-    const updated = await prisma.post.update({
-      where: { id: postId },
-      data: { likes: post.likes + 1 }
-    });
-    
-    res.json({ post: updated });
+
+    // One like per user: liking again removes the like
+    const key = { postId_userId: { postId, userId } };
+    const existing = await prisma.postReaction.findUnique({ where: key });
+    const [, updated] = await prisma.$transaction([
+      existing
+        ? prisma.postReaction.delete({ where: key })
+        : prisma.postReaction.create({ data: { postId, userId } }),
+      prisma.post.update({
+        where: { id: postId },
+        data: { likes: { increment: existing ? -1 : 1 } }
+      })
+    ]);
+
+    res.json({ post: updated, liked: !existing });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to like post', details: err.message });
+    res.status(500).json({ error: 'Failed to like post' });
   }
 });
 
@@ -1263,7 +1333,7 @@ app.post('/api/posts/:id/flag', authenticateJWT, async (req, res) => {
     
     res.json({ post: updated, message: 'Post flagged for review' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to flag post', details: err.message });
+    res.status(500).json({ error: 'Failed to flag post' });
   }
 });
 
@@ -1282,26 +1352,7 @@ app.patch('/api/posts/:id/unflag', authenticateJWT, requireRole('admin'), async 
     
     res.json({ post: updated, message: 'Post unflagged successfully' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to unflag post', details: err.message });
-  }
-});
-
-// Get all flagged posts (admin only)
-app.get('/api/posts/flagged', authenticateJWT, requireRole('admin'), async (req, res) => {
-  try {
-    const posts = await prisma.post.findMany({
-      where: { flagged: true },
-      include: {
-        author: {
-          select: { id: true, username: true, email: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-    
-    res.json({ posts });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch flagged posts', details: err.message });
+    res.status(500).json({ error: 'Failed to unflag post' });
   }
 });
 
@@ -1336,7 +1387,7 @@ app.post('/api/posts/:id/comments', authenticateJWT, async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create comment', details: err.message });
+    res.status(500).json({ error: 'Failed to create comment' });
   }
 });
 
@@ -1370,7 +1421,7 @@ app.put('/api/comments/:id', authenticateJWT, async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update comment', details: err.message });
+    res.status(500).json({ error: 'Failed to update comment' });
   }
 });
 
@@ -1403,7 +1454,7 @@ app.delete('/api/comments/:id', authenticateJWT, async (req, res) => {
     
     res.json({ message: 'Comment deleted successfully' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to delete comment', details: err.message });
+    res.status(500).json({ error: 'Failed to delete comment' });
   }
 });
 
@@ -1411,18 +1462,27 @@ app.delete('/api/comments/:id', authenticateJWT, async (req, res) => {
 app.post('/api/comments/:id/like', authenticateJWT, async (req, res) => {
   try {
     const commentId = Number(req.params.id);
+    const userId = req.user.userId;
     const comment = await prisma.comment.findUnique({ where: { id: commentId } });
-    
+
     if (!comment) return res.status(404).json({ error: 'Comment not found' });
-    
-    const updated = await prisma.comment.update({
-      where: { id: commentId },
-      data: { likes: comment.likes + 1 }
-    });
-    
-    res.json({ comment: updated });
+
+    // One like per user: liking again removes the like
+    const key = { commentId_userId: { commentId, userId } };
+    const existing = await prisma.commentReaction.findUnique({ where: key });
+    const [, updated] = await prisma.$transaction([
+      existing
+        ? prisma.commentReaction.delete({ where: key })
+        : prisma.commentReaction.create({ data: { commentId, userId } }),
+      prisma.comment.update({
+        where: { id: commentId },
+        data: { likes: { increment: existing ? -1 : 1 } }
+      })
+    ]);
+
+    res.json({ comment: updated, liked: !existing });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to like comment', details: err.message });
+    res.status(500).json({ error: 'Failed to like comment' });
   }
 });
 
@@ -1490,7 +1550,7 @@ app.post('/api/comments/:id/flag', authenticateJWT, async (req, res) => {
       flagCount: updatedComment.flagCount
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to flag comment', details: err.message });
+    res.status(500).json({ error: 'Failed to flag comment' });
   }
 });
 
@@ -1519,123 +1579,28 @@ app.patch('/api/comments/:id/unflag', authenticateJWT, requireRole('admin'), asy
     
     res.json({ comment: updated, message: 'Comment unflagged successfully' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to unflag comment', details: err.message });
-  }
-});
-
-// Get all flagged comments (admin only)
-app.get('/api/comments/flagged', authenticateJWT, requireRole('admin'), async (req, res) => {
-  try {
-    const comments = await prisma.comment.findMany({
-      where: { 
-        flagged: true,
-        deleted: false
-      },
-      include: {
-        author: {
-          select: { id: true, username: true, email: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-    
-    res.json({ comments });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch flagged comments', details: err.message });
+    res.status(500).json({ error: 'Failed to unflag comment' });
   }
 });
 
 // ========== MODERATION ROUTES (Admin/Counselor Only) ==========
 
-// Get all flagged posts (for admin dashboard)
-app.get('/api/posts/flagged', authenticateJWT, requireRole('admin', 'counselor'), async (req, res) => {
-  try {
-    const flaggedPosts = await prisma.post.findMany({
-      where: { flagged: true },
-      include: {
-        author: { select: { id: true, username: true, email: true } }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-    res.json({ posts: flaggedPosts });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch flagged posts', details: err.message });
-  }
-});
-
-// Unflag a post (admin only)
-app.patch('/api/posts/:id/unflag', authenticateJWT, requireRole('admin'), async (req, res) => {
-  try {
-    const postId = Number(req.params.id);
-    const updated = await prisma.post.update({
-      where: { id: postId },
-      data: { flagged: false }
-    });
-    res.json({ post: updated, message: 'Post unflagged successfully' });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to unflag post', details: err.message });
-  }
-});
-
 // Get all flagged comments (for admin dashboard)
 app.get('/api/comments/flagged', authenticateJWT, requireRole('admin', 'counselor'), async (req, res) => {
   try {
     const flaggedComments = await prisma.comment.findMany({
-      where: { 
+      where: {
         flagged: true,
         deleted: false
       },
       include: {
-        author: { select: { id: true, username: true, email: true } }
+        user: { select: { id: true, username: true } }
       },
       orderBy: { createdAt: 'desc' }
     });
     res.json({ comments: flaggedComments });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch flagged comments', details: err.message });
-  }
-});
-
-// Unflag a comment (admin only)
-app.patch('/api/comments/:id/unflag', authenticateJWT, requireRole('admin'), async (req, res) => {
-  try {
-    const commentId = Number(req.params.id);
-    const updated = await prisma.comment.update({
-      where: { id: commentId },
-      data: { 
-        flagged: false,
-        flagCount: 0
-      }
-    });
-    
-    // Also clear all flags for this comment
-    await prisma.commentFlag.deleteMany({
-      where: { commentId }
-    });
-    
-    res.json({ comment: updated, message: 'Comment unflagged successfully' });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to unflag comment', details: err.message });
-  }
-});
-
-// Get all users (admin only)
-app.get('/api/admin/users', authenticateJWT, requireRole('admin'), async (req, res) => {
-  try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        fullName: true,
-        role: true,
-        createdAt: true
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-    res.json({ users });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch users', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch flagged comments' });
   }
 });
 
@@ -1675,7 +1640,7 @@ app.get('/api/moderation/flagged-comments', authenticateJWT, requireRole('admin'
       total: formattedComments.length 
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch flagged comments', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch flagged comments' });
   }
 });
 
@@ -1714,7 +1679,7 @@ app.get('/api/comments/:id/flags', authenticateJWT, requireRole('admin', 'counse
       flags: comment.flags
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch comment flags', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch comment flags' });
   }
 });
 
@@ -1755,7 +1720,7 @@ app.post('/api/moderation/comments/:id/hide', authenticateJWT, requireRole('admi
       }
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to hide comment', details: err.message });
+    res.status(500).json({ error: 'Failed to hide comment' });
   }
 });
 
@@ -1790,7 +1755,7 @@ app.post('/api/moderation/comments/:id/unhide', authenticateJWT, requireRole('ad
       }
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to unhide comment', details: err.message });
+    res.status(500).json({ error: 'Failed to unhide comment' });
   }
 });
 
@@ -1828,7 +1793,7 @@ app.delete('/api/moderation/comments/:id/flags', authenticateJWT, requireRole('a
       }
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to clear flags', details: err.message });
+    res.status(500).json({ error: 'Failed to clear flags' });
   }
 });
 
@@ -1841,7 +1806,7 @@ app.get('/api/resources', async (req, res) => {
     });
     res.json({ resources });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch resources', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch resources' });
   }
 });
 
@@ -1857,7 +1822,7 @@ app.post('/api/resources', authenticateJWT, requireRole('admin'), async (req, re
     });
     res.json({ resource });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create resource', details: err.message });
+    res.status(500).json({ error: 'Failed to create resource' });
   }
 });
 
@@ -1871,7 +1836,7 @@ app.put('/api/resources/:id', authenticateJWT, requireRole('admin'), async (req,
     });
     res.json({ resource });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update resource', details: err.message });
+    res.status(500).json({ error: 'Failed to update resource' });
   }
 });
 
@@ -1881,7 +1846,7 @@ app.delete('/api/resources/:id', authenticateJWT, requireRole('admin'), async (r
     await prisma.resource.delete({ where: { id: Number(req.params.id) } });
     res.json({ message: 'Resource deleted' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to delete resource', details: err.message });
+    res.status(500).json({ error: 'Failed to delete resource' });
   }
 });
 
@@ -1902,7 +1867,7 @@ app.get('/api/admin/users', authenticateJWT, requireRole('admin'), async (req, r
     
     res.json({ users });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch users', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
 
@@ -2006,7 +1971,7 @@ app.get('/api/analytics', authenticateJWT, requireRole('admin'), async (req, res
     
     res.json({ analytics });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch analytics', details: err.message });
+    res.status(500).json({ error: 'Failed to fetch analytics' });
   }
 });
 

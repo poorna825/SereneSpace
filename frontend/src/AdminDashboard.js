@@ -447,7 +447,7 @@ function AdminDashboard() {
                           <td className="text-truncate" style={{maxWidth: '300px'}}>
                             {post.content}
                           </td>
-                          <td>{post.author?.username || 'Unknown'}</td>
+                          <td>{post.user?.username || 'Unknown'}</td>
                           <td>{new Date(post.createdAt).toLocaleDateString()}</td>
                           <td>
                             <button 
@@ -499,7 +499,7 @@ function AdminDashboard() {
                           <td className="text-truncate" style={{maxWidth: '300px'}}>
                             {comment.content}
                           </td>
-                          <td>{comment.author?.username || 'Unknown'}</td>
+                          <td>{comment.user?.username || 'Unknown'}</td>
                           <td>{new Date(comment.createdAt).toLocaleDateString()}</td>
                           <td>
                             <button 
